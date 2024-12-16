@@ -1,30 +1,93 @@
-## GA and PSO for Vehicle Routing Problem with Time Windows
+## Vehicle Routing Problem with Real Road Distances
 
 ### Overview
-Application is divided into four modules with different areas to cover:
--  Data preprocessing - transformation of a selected problem instance to a structure that can be processed in the further modules;
--  Core functions - methods used within both algorithms, such as calculating fitness, generating initial population of individuals or particles, updating particles velocity and position, performing crossover and mutation;
--  Algorithms creator - functions allowing to start both algorithms with desired number of iterations and other corresponding parameters such as population size, social and cognitive acceleration coefficients, particle speed limit, crossover and mutation probability. Algorithms are coded with two DEAP containers support: Toolbox and Creator;
--  Application execution - script to initialize parameters and run specified problem instance and chosen algorithm. Results are printed using Statistics and Logbook tools from DEAP
-framework;
+This application solves the Vehicle Routing Problem (VRP) using real road distances from OpenStreetMap. It is divided into several modules:
+
+- **Data preprocessing** (`process_data.py`): 
+  - Loads problem instances from data files
+  - Handles coordinate conversions
+  - Calculates real road distances using OpenStreetMap
+  - Visualizes routes on interactive maps
+
+- **Core functions** (`core_funs.py`):
+  - Route generation and validation
+  - Distance calculations
+  - Tabu list management
+  - Neighborhood generation
+
+- **Algorithm implementations** (`alg_creator.py`):
+  - Particle Swarm Optimization (PSO)
+  - Tabu Search
+  - Route visualization and optimization
+
+- **Route optimization** (`route_optimizer.py`):
+  - OR-Tools based VRP solver
+  - Handles capacity constraints
+  - Optimizes for real road distances
+
+### Features
+- Real road distance calculations using OpenStreetMap
+- Interactive route visualization on maps
+- Multiple optimization algorithms (PSO, Tabu Search)
+- Support for capacity constraints
+- Navigation link generation for Google Maps
+- Early stopping for efficiency
+
+### Quick Start
+1. Install requirements:
+```bash
+pip install -r requirements.txt
+```
+
+2. Run the test script:
+```bash
+python test_vrp.py
+```
+
+Or run with specific parameters:
+```bash
+python run.py istanbultest TABU
+```
+
+### Data Format
+Problem instances should be in the following format:
+```
+Instance Name
+NumVehicles Capacity
+NodeID Latitude Longitude Demand ReadyTime DueTime ServiceTime # Location
+...
+```
+
+Example:
+```
+Istanbul VRP Test Instance
+4 100
+0 41.0082 28.9784 0 0 1000 0 # Depot (Mecidiyeköy)
+1 41.035 28.975 10 0 1000 30 # Şişli
+...
+```
 
 ### Parameters
-There are various parameters that can be modified in order to optimize and compare the
-performance of both algorithms. They can be divided into four categories:
--  input data properties (for both algorithms),
--  iterations, population size and fitness function coefficients population size (for both algorithms),
--  genetic operators probability (for GA),
--  properties of particles (for PSO).
+Key parameters that can be modified:
+- `num_customers`: Number of delivery locations
+- `pop_size`: Population size for metaheuristics
+- `n_gen`: Number of generations/iterations
+- `tabu_size`: Size of tabu list
+- `stagnation_limit`: Early stopping threshold
+- `vehicle_capacity`: Maximum vehicle capacity
 
-### Quick start
-All the parameters can be changed in the `run.py` file. To start the algorithm simply simply run this this file with the problem name (R101, ...) and chosen algorithm (GA/PSO) as arguments. For example:
-```
-python run.py R101 GA
-```
+### Visualization
+The application generates two types of visualizations:
+1. Initial locations map (`initial_locations.html`)
+2. Optimized routes map (`route_map.html`)
 
-### Things to consider
-The algorithm parameters are not optimized and results are often quite poor.  Also the way the individual is coded could be improved.
+Both maps are interactive and show:
+- Depot location
+- Customer locations with demands
+- Route segments with arrows
+- Distance information
 
 ### References
-
-This project was inspired by: https://github.com/iRB-Lab/py-ga-VRPTW
+- OpenStreetMap for road network data
+- OR-Tools for basic VRP solving
+- Folium for map visualization
