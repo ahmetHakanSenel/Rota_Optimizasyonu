@@ -3,3 +3,5 @@
 # exclude
 /.idea
 /__pycache__
+cache/
+*.graphml
