@@ -9,6 +9,8 @@ import math
 import requests
 import time
 import traceback
+import pickle
+from datetime import datetime, timedelta
 
 # Use a single BASE_DIR definition that works cross-platform
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -43,170 +45,70 @@ def convert_to_real_coordinates(x, y, base_lat=41.0082, base_lon=28.9784):
 
 
 class MapHandler:
-    def __init__(self, location):
-        self.location = location
-
-    def calculate_route_distance(self, coord1, coord2):
-        # Mesafe hesaplama mantığı (örnek olarak sabit bir değer dönüyorum)
-        return ((coord1[0] - coord2[0])**2 + (coord1[1] - coord2[1])**2)**0.5
-
-def load_problem_instance(problem_name='istanbul-test'):
-    cust_num = 0
-    # Use os.path.join for cross-platform compatibility
-    text_file = os.path.join(BASE_DIR, 'data', problem_name + '.txt')
-    
-    # Create data directory if it doesn't exist
-    data_dir = os.path.join(BASE_DIR, 'data')
-    os.makedirs(data_dir, exist_ok=True)
-    
-    # Print some debug info
-    print(f"Looking for file: {text_file}")
-    print(f"Current directory: {os.getcwd()}")
-    print(f"Data directory exists: {os.path.exists(data_dir)}")
-    
-    parsed_data = {
-        DEPART: None,
-        DISTANCE_MATRIX: None,
-        MAX_VEHICLE_NUMBER: None,
-        VEHICLE_CAPACITY: None,
-        INSTANCE_NAME: None
-    }
-
-    line = ""
-    values = []
-
-    try:
-        with io.open(text_file, 'rt', encoding='utf-8', newline='') as fo:
-            for line_count, line in enumerate(fo, start=1):
-                line = line.strip()
-                if not line or line.startswith(('CUSTOMER', 'VEHICLE', 'CUST NO.', '#')):
-                    continue
-
-                values = line.split()
-                if len(values) == 0:
-                    continue
-
-                if line_count == 1:
-                    parsed_data[INSTANCE_NAME] = line
-                elif len(values) == 2 and values[1].isdigit():
-                    parsed_data[MAX_VEHICLE_NUMBER] = int(values[0])
-                    parsed_data[VEHICLE_CAPACITY] = float(values[1])
-                elif len(values) >= 7:
-                    cust_id = int(values[0])
-                    comment = ' '.join(values[7:]) if len(values) > 7 else ''
-                    if cust_id == 0:
-                        # Depot
-                        parsed_data[DEPART] = {
-                            COORDINATES: {
-                                X_COORD: float(values[1]),
-                                Y_COORD: float(values[2]),
-                            },
-                            DEMAND: float(values[3]),
-                            READY_TIME: float(values[4]),
-                            DUE_TIME: float(values[5]),
-                            SERVICE_TIME: float(values[6]),
-                            'comment': comment.strip('# ')
-                        }
-                    else:
-                        # Customers
-                        parsed_data[f'C_{cust_id}'] = {
-                            COORDINATES: {
-                                X_COORD: float(values[1]),
-                                Y_COORD: float(values[2]),
-                            },
-                            DEMAND: float(values[3]),
-                            READY_TIME: float(values[4]),
-                            DUE_TIME: float(values[5]),
-                            SERVICE_TIME: float(values[6]),
-                            'comment': comment.strip('# ')
-                        }
-                        cust_num += 1
-
-        # Create distance matrix
-        customers = [DEPART] + [f'C_{x}' for x in range(1, cust_num + 1)]
-        distance_matrix = []
-
-        print("Creating distance matrix...")
-        map_handler = MapHandler("Istanbul, Turkey")
-
-        for c1 in customers:
-            row = []
-            coord1 = (
-                parsed_data[c1][COORDINATES][X_COORD],
-                parsed_data[c1][COORDINATES][Y_COORD]
-            )
-
-            for c2 in customers:
-                if c1 == c2:
-                    row.append(0)
-                    continue
-
-                coord2 = (
-                    parsed_data[c2][COORDINATES][X_COORD],
-                    parsed_data[c2][COORDINATES][Y_COORD]
-                )
-                try:
-                    distance = map_handler.calculate_route_distance(coord1, coord2)
-                except Exception as e:
-                    print(f"Error calculating distance between {coord1} and {coord2}: {e}")
-                    distance = float('inf')
-
-                row.append(distance)
-
-            distance_matrix.append(row)
-            print(f"Calculated distances for {c1}")
-
-        parsed_data[DISTANCE_MATRIX] = distance_matrix
-        return parsed_data
-
-    except UnicodeDecodeError as e:
-        print(f"UnicodeDecodeError: {e}")
-        print(f"Error in file: {text_file} at line {line_count}")
-        traceback.print_exc()
-        return None
-    except Exception as e:
-        print(f"Error loading problem instance: {e}")
-        print(f"Current line: {line}")
-        print(f"Values: {values}")
-        traceback.print_exc()
-        return None
-
-
-
-def calculate_real_distance(coord1, coord2):
-    """Calculate real-world driving distance between two points using OSM"""
-    try:
-        # Get the road network if not already initialized
-        map_handler = MapHandler("Istanbul, Turkey")
-        
-        # Calculate actual driving distance using road network
-        distance = map_handler.calculate_route_distance(coord1, coord2)
-        return int(distance * 1000)  # Convert to meters for OR-Tools
-    except Exception as e:
-        print(f"Error calculating real distance: {e}")
-        # Fallback to geodesic distance only if routing fails
-        return int(geodesic(coord1, coord2).meters)
-
-
-class MapHandler:
     _instance = None
     _initialized = False
+    _cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache')
+    _cache_file = os.path.join(_cache_dir, 'istanbul_network.graphml')
+    _cache_duration = timedelta(days=7)  # Cache'in geçerlilik süresi
     
     def __new__(cls, city="Istanbul, Turkey"):
         if cls._instance is None:
-            print(f"Initializing road network for {city}...")
             cls._instance = super(MapHandler, cls).__new__(cls)
             cls._instance._initialized = False
         return cls._instance
     
     def __init__(self, city="Istanbul, Turkey"):
         if not self._initialized:
-            self.G = ox.graph_from_place(city, network_type='drive')
-            self.nodes, self.edges = ox.graph_to_gdfs(self.G)
+            self._ensure_cache_dir()
+            
+            if self._should_load_from_cache():
+                print("Loading road network from cache...")
+                self._load_from_cache()
+            else:
+                print(f"Initializing road network for {city}...")
+                self.G = ox.graph_from_place(city, network_type='drive')
+                self.nodes, self.edges = ox.graph_to_gdfs(self.G)
+                self._save_to_cache()
+                
             self.distance_cache = {}
             self._node_cache = {}
             self._initialized = True
             print("Road network initialized successfully!")
+    
+    def _ensure_cache_dir(self):
+        """Cache dizininin varlığını kontrol et ve yoksa oluştur"""
+        if not os.path.exists(self._cache_dir):
+            os.makedirs(self._cache_dir)
+    
+    def _should_load_from_cache(self):
+        """Cache'in geçerli olup olmadığını kontrol et"""
+        if not os.path.exists(self._cache_file):
+            return False
+            
+        # Cache dosyasının yaşını kontrol et
+        cache_time = datetime.fromtimestamp(os.path.getmtime(self._cache_file))
+        return datetime.now() - cache_time < self._cache_duration
+    
+    def _save_to_cache(self):
+        """Ağ verilerini cache'e kaydet"""
+        try:
+            ox.save_graphml(self.G, self._cache_file)
+            print("Road network saved to cache successfully!")
+        except Exception as e:
+            print(f"Error saving to cache: {e}")
+    
+    def _load_from_cache(self):
+        """Cache'den ağ verilerini yükle"""
+        try:
+            self.G = ox.load_graphml(self._cache_file)
+            self.nodes, self.edges = ox.graph_to_gdfs(self.G)
+            print("Road network loaded from cache successfully!")
+        except Exception as e:
+            print(f"Error loading from cache: {e}")
+            print("Falling back to fresh download...")
+            self.G = ox.graph_from_place("Istanbul, Turkey", network_type='drive')
+            self.nodes, self.edges = ox.graph_to_gdfs(self.G)
+            self._save_to_cache()
 
     def calculate_route_distance(self, coord1, coord2):
         """Calculate actual driving distance using OSM"""
@@ -397,6 +299,143 @@ class MapHandler:
             ).add_to(m)
         
         m.save(output_file)
+
+def load_problem_instance(problem_name='istanbul-test'):
+    cust_num = 0
+    # Use os.path.join for cross-platform compatibility
+    text_file = os.path.join(BASE_DIR, 'data', problem_name + '.txt')
+    
+    # Create data directory if it doesn't exist
+    data_dir = os.path.join(BASE_DIR, 'data')
+    os.makedirs(data_dir, exist_ok=True)
+    
+    # Print some debug info
+    print(f"Looking for file: {text_file}")
+    print(f"Current directory: {os.getcwd()}")
+    print(f"Data directory exists: {os.path.exists(data_dir)}")
+    
+    parsed_data = {
+        DEPART: None,
+        DISTANCE_MATRIX: None,
+        MAX_VEHICLE_NUMBER: None,
+        VEHICLE_CAPACITY: None,
+        INSTANCE_NAME: None
+    }
+
+    line = ""
+    values = []
+
+    try:
+        with io.open(text_file, 'rt', encoding='utf-8', newline='') as fo:
+            for line_count, line in enumerate(fo, start=1):
+                line = line.strip()
+                if not line or line.startswith(('CUSTOMER', 'VEHICLE', 'CUST NO.', '#')):
+                    continue
+
+                values = line.split()
+                if len(values) == 0:
+                    continue
+
+                if line_count == 1:
+                    parsed_data[INSTANCE_NAME] = line
+                elif len(values) == 2 and values[1].isdigit():
+                    parsed_data[MAX_VEHICLE_NUMBER] = int(values[0])
+                    parsed_data[VEHICLE_CAPACITY] = float(values[1])
+                elif len(values) >= 7:
+                    cust_id = int(values[0])
+                    comment = ' '.join(values[7:]) if len(values) > 7 else ''
+                    if cust_id == 0:
+                        # Depot
+                        parsed_data[DEPART] = {
+                            COORDINATES: {
+                                X_COORD: float(values[1]),
+                                Y_COORD: float(values[2]),
+                            },
+                            DEMAND: float(values[3]),
+                            READY_TIME: float(values[4]),
+                            DUE_TIME: float(values[5]),
+                            SERVICE_TIME: float(values[6]),
+                            'comment': comment.strip('# ')
+                        }
+                    else:
+                        # Customers
+                        parsed_data[f'C_{cust_id}'] = {
+                            COORDINATES: {
+                                X_COORD: float(values[1]),
+                                Y_COORD: float(values[2]),
+                            },
+                            DEMAND: float(values[3]),
+                            READY_TIME: float(values[4]),
+                            DUE_TIME: float(values[5]),
+                            SERVICE_TIME: float(values[6]),
+                            'comment': comment.strip('# ')
+                        }
+                        cust_num += 1
+
+        # Create distance matrix
+        customers = [DEPART] + [f'C_{x}' for x in range(1, cust_num + 1)]
+        distance_matrix = []
+
+        print("Creating distance matrix...")
+        map_handler = MapHandler("Istanbul, Turkey")
+
+        for c1 in customers:
+            row = []
+            coord1 = (
+                parsed_data[c1][COORDINATES][X_COORD],
+                parsed_data[c1][COORDINATES][Y_COORD]
+            )
+
+            for c2 in customers:
+                if c1 == c2:
+                    row.append(0)
+                    continue
+
+                coord2 = (
+                    parsed_data[c2][COORDINATES][X_COORD],
+                    parsed_data[c2][COORDINATES][Y_COORD]
+                )
+                try:
+                    distance = map_handler.calculate_route_distance(coord1, coord2)
+                except Exception as e:
+                    print(f"Error calculating distance between {coord1} and {coord2}: {e}")
+                    distance = float('inf')
+
+                row.append(distance)
+
+            distance_matrix.append(row)
+            print(f"Calculated distances for {c1}")
+
+        parsed_data[DISTANCE_MATRIX] = distance_matrix
+        return parsed_data
+
+    except UnicodeDecodeError as e:
+        print(f"UnicodeDecodeError: {e}")
+        print(f"Error in file: {text_file} at line {line_count}")
+        traceback.print_exc()
+        return None
+    except Exception as e:
+        print(f"Error loading problem instance: {e}")
+        print(f"Current line: {line}")
+        print(f"Values: {values}")
+        traceback.print_exc()
+        return None
+
+
+
+def calculate_real_distance(coord1, coord2):
+    """Calculate real-world driving distance between two points using OSM"""
+    try:
+        # Get the road network if not already initialized
+        map_handler = MapHandler("Istanbul, Turkey")
+        
+        # Calculate actual driving distance using road network
+        distance = map_handler.calculate_route_distance(coord1, coord2)
+        return int(distance * 1000)  # Convert to meters for OR-Tools
+    except Exception as e:
+        print(f"Error calculating real distance: {e}")
+        # Fallback to geodesic distance only if routing fails
+        return int(geodesic(coord1, coord2).meters)
 
 def show_initial_locations(instance_data):
     """Show all customer locations on map before starting calculations"""
