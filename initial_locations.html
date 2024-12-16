@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    
+        <script>
+            L_NO_TOUCH = false;
+            L_DISABLE_3D = false;
+        </script>
+    
+    <style>html, body {width: 100%;height: 100%;margin: 0;padding: 0;}</style>
+    <style>#map {position:absolute;top:0;bottom:0;right:0;left:0;}</style>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_12c157726e20ec7b80d502234ef073c2 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+        
+</head>
+<body>
+    
+    
+            <div class="folium-map" id="map_12c157726e20ec7b80d502234ef073c2" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_12c157726e20ec7b80d502234ef073c2 = L.map(
+                "map_12c157726e20ec7b80d502234ef073c2",
+                {
+                    center: [41.0082, 28.9784],
+                    crs: L.CRS.EPSG3857,
+                    zoom: 13,
+                    zoomControl: true,
+                    preferCanvas: false,
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_16dda3c0c2d3f9e5ea1879aefe00f305 = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {"attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors", "detectRetina": false, "maxNativeZoom": 19, "maxZoom": 19, "minZoom": 0, "noWrap": false, "opacity": 1, "subdomains": "abc", "tms": false}
+            );
+        
+    
+            tile_layer_16dda3c0c2d3f9e5ea1879aefe00f305.addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var marker_9a3e8a978820c1f66bf6a18f401912d0 = L.marker(
+                [41.0082, 28.9784],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_d5b4bacd424449d516af0f9372332fbd = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "black", "prefix": "glyphicon"}
+            );
+            marker_9a3e8a978820c1f66bf6a18f401912d0.setIcon(icon_d5b4bacd424449d516af0f9372332fbd);
+        
+    
+        var popup_2fc7773239ce812cc856549c4ce7cf65 = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_f0806579486b3a1aa770eaccba396893 = $(`<div id="html_f0806579486b3a1aa770eaccba396893" style="width: 100.0%; height: 100.0%;">Depot (Mecidiyeköy)</div>`)[0];
+                popup_2fc7773239ce812cc856549c4ce7cf65.setContent(html_f0806579486b3a1aa770eaccba396893);
+            
+        
+
+        marker_9a3e8a978820c1f66bf6a18f401912d0.bindPopup(popup_2fc7773239ce812cc856549c4ce7cf65)
+        ;
+
+        
+    
+    
+            var marker_6d0a83628ee5c5b224a7a9f6eae3674c = L.marker(
+                [41.035, 28.975],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_5980e6e36b73ff0147968601f87b256c = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_6d0a83628ee5c5b224a7a9f6eae3674c.setIcon(icon_5980e6e36b73ff0147968601f87b256c);
+        
+    
+        var popup_0cc6b8dd6ba3f580bb9db581d0838c0f = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_d9b2659f521495e7e6d3abecc3d71d49 = $(`<div id="html_d9b2659f521495e7e6d3abecc3d71d49" style="width: 100.0%; height: 100.0%;">Customer 1<br>Location: Şişli<br>Demand: 10.0</div>`)[0];
+                popup_0cc6b8dd6ba3f580bb9db581d0838c0f.setContent(html_d9b2659f521495e7e6d3abecc3d71d49);
+            
+        
+
+        marker_6d0a83628ee5c5b224a7a9f6eae3674c.bindPopup(popup_0cc6b8dd6ba3f580bb9db581d0838c0f)
+        ;
+
+        
+    
+    
+            var marker_dfc0b8ff8d80afcd044f6994328e8668 = L.marker(
+                [41.04, 28.978],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_4ef4926da083c4bbc72f1eacf99f4a22 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_dfc0b8ff8d80afcd044f6994328e8668.setIcon(icon_4ef4926da083c4bbc72f1eacf99f4a22);
+        
+    
+        var popup_3901452e555d24753ef90a8712276a3a = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_4137f433890c6dcb83785b85fa9aadc8 = $(`<div id="html_4137f433890c6dcb83785b85fa9aadc8" style="width: 100.0%; height: 100.0%;">Customer 2<br>Location: Levent<br>Demand: 15.0</div>`)[0];
+                popup_3901452e555d24753ef90a8712276a3a.setContent(html_4137f433890c6dcb83785b85fa9aadc8);
+            
+        
+
+        marker_dfc0b8ff8d80afcd044f6994328e8668.bindPopup(popup_3901452e555d24753ef90a8712276a3a)
+        ;
+
+        
+    
+    
+            var marker_fc3a330abfb68e001aa7d4f84e84b430 = L.marker(
+                [41.038, 28.972],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_5036d5c7a3ab19b596e9e77df9ee8994 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_fc3a330abfb68e001aa7d4f84e84b430.setIcon(icon_5036d5c7a3ab19b596e9e77df9ee8994);
+        
+    
+        var popup_8c5791e9461d1feca3f6a4d0a3ab7d57 = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_db1fd3411c3873afc3dd5b27480f60f3 = $(`<div id="html_db1fd3411c3873afc3dd5b27480f60f3" style="width: 100.0%; height: 100.0%;">Customer 3<br>Location: Gayrettepe<br>Demand: 20.0</div>`)[0];
+                popup_8c5791e9461d1feca3f6a4d0a3ab7d57.setContent(html_db1fd3411c3873afc3dd5b27480f60f3);
+            
+        
+
+        marker_fc3a330abfb68e001aa7d4f84e84b430.bindPopup(popup_8c5791e9461d1feca3f6a4d0a3ab7d57)
+        ;
+
+        
+    
+    
+            var marker_237d896121a79f07351873d00640eac9 = L.marker(
+                [41.032, 28.975],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_263cf268f6dd1e1043833454063c0c9f = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_237d896121a79f07351873d00640eac9.setIcon(icon_263cf268f6dd1e1043833454063c0c9f);
+        
+    
+        var popup_3f0ace206cb63beb01f2141c048d8eba = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_3b4de4602f63a019386feccc80da1116 = $(`<div id="html_3b4de4602f63a019386feccc80da1116" style="width: 100.0%; height: 100.0%;">Customer 4<br>Location: Beşiktaş<br>Demand: 15.0</div>`)[0];
+                popup_3f0ace206cb63beb01f2141c048d8eba.setContent(html_3b4de4602f63a019386feccc80da1116);
+            
+        
+
+        marker_237d896121a79f07351873d00640eac9.bindPopup(popup_3f0ace206cb63beb01f2141c048d8eba)
+        ;
+
+        
+    
+    
+            var marker_67d1cc40dffad5c50cb00bfc2bfffeb1 = L.marker(
+                [41.045, 28.973],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_76a087b4b65a34d87b5b315731389be1 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_67d1cc40dffad5c50cb00bfc2bfffeb1.setIcon(icon_76a087b4b65a34d87b5b315731389be1);
+        
+    
+        var popup_875f9cf7c55752c76f5407aac58d3cc3 = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_b531032a4aa84f336141b21628a7a382 = $(`<div id="html_b531032a4aa84f336141b21628a7a382" style="width: 100.0%; height: 100.0%;">Customer 5<br>Location: Maslak<br>Demand: 25.0</div>`)[0];
+                popup_875f9cf7c55752c76f5407aac58d3cc3.setContent(html_b531032a4aa84f336141b21628a7a382);
+            
+        
+
+        marker_67d1cc40dffad5c50cb00bfc2bfffeb1.bindPopup(popup_875f9cf7c55752c76f5407aac58d3cc3)
+        ;
+
+        
+    
+    
+            var marker_29d475b953695f01daaaec99e7504486 = L.marker(
+                [41.037, 28.97],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_899bd5212fccb7573065e47e0df5acc3 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_29d475b953695f01daaaec99e7504486.setIcon(icon_899bd5212fccb7573065e47e0df5acc3);
+        
+    
+        var popup_5d0a5454758095072cbfbf066b9568d5 = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_38913a5508d5f6df5ef4834efc884928 = $(`<div id="html_38913a5508d5f6df5ef4834efc884928" style="width: 100.0%; height: 100.0%;">Customer 6<br>Location: Ortaköy<br>Demand: 30.0</div>`)[0];
+                popup_5d0a5454758095072cbfbf066b9568d5.setContent(html_38913a5508d5f6df5ef4834efc884928);
+            
+        
+
+        marker_29d475b953695f01daaaec99e7504486.bindPopup(popup_5d0a5454758095072cbfbf066b9568d5)
+        ;
+
+        
+    
+    
+            var marker_fe253a5f59dbfaefd31df6a0d54c7ef4 = L.marker(
+                [41.042, 28.975],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_29f295be080e55e03511c0bfa8e18bb1 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_fe253a5f59dbfaefd31df6a0d54c7ef4.setIcon(icon_29f295be080e55e03511c0bfa8e18bb1);
+        
+    
+        var popup_d953c9644806b579192d625a1bc9f3b2 = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_b1061821af9f67a2e7c0d47e46ddd630 = $(`<div id="html_b1061821af9f67a2e7c0d47e46ddd630" style="width: 100.0%; height: 100.0%;">Customer 7<br>Location: Esentepe<br>Demand: 10.0</div>`)[0];
+                popup_d953c9644806b579192d625a1bc9f3b2.setContent(html_b1061821af9f67a2e7c0d47e46ddd630);
+            
+        
+
+        marker_fe253a5f59dbfaefd31df6a0d54c7ef4.bindPopup(popup_d953c9644806b579192d625a1bc9f3b2)
+        ;
+
+        
+    
+    
+            var marker_f9da3a5bb70823f617ffdd02953e820f = L.marker(
+                [41.033, 28.98],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_7ededa884680cde337d97ed838c04303 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_f9da3a5bb70823f617ffdd02953e820f.setIcon(icon_7ededa884680cde337d97ed838c04303);
+        
+    
+        var popup_c1d43f4b4f0bbd84e00b751985611bbc = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_5b52a897e2b68837f092726ee42f06aa = $(`<div id="html_5b52a897e2b68837f092726ee42f06aa" style="width: 100.0%; height: 100.0%;">Customer 8<br>Location: Nişantaşı<br>Demand: 15.0</div>`)[0];
+                popup_c1d43f4b4f0bbd84e00b751985611bbc.setContent(html_5b52a897e2b68837f092726ee42f06aa);
+            
+        
+
+        marker_f9da3a5bb70823f617ffdd02953e820f.bindPopup(popup_c1d43f4b4f0bbd84e00b751985611bbc)
+        ;
+
+        
+    
+    
+            var marker_4c32340a2ede980972a4560c5b85e505 = L.marker(
+                [41.039, 28.97],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_d5629d75ab276389118ddf8aef34c2a5 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_4c32340a2ede980972a4560c5b85e505.setIcon(icon_d5629d75ab276389118ddf8aef34c2a5);
+        
+    
+        var popup_c6bc3445ec0898e4617a09276b22ec5b = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_494b82b683263cfb2523dad03624ed24 = $(`<div id="html_494b82b683263cfb2523dad03624ed24" style="width: 100.0%; height: 100.0%;">Customer 9<br>Location: Kağıthane<br>Demand: 20.0</div>`)[0];
+                popup_c6bc3445ec0898e4617a09276b22ec5b.setContent(html_494b82b683263cfb2523dad03624ed24);
+            
+        
+
+        marker_4c32340a2ede980972a4560c5b85e505.bindPopup(popup_c6bc3445ec0898e4617a09276b22ec5b)
+        ;
+
+        
+    
+    
+            var marker_78930d1409580f5c1220ee78605dbd92 = L.marker(
+                [41.036, 28.975],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_c6d894431635c3a58ad4ce5f2560daa9 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_78930d1409580f5c1220ee78605dbd92.setIcon(icon_c6d894431635c3a58ad4ce5f2560daa9);
+        
+    
+        var popup_da32e7d7e570c3e9d847ce7aad07c0ee = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_339eae6b4d4c6b85862fbe54d960c7dc = $(`<div id="html_339eae6b4d4c6b85862fbe54d960c7dc" style="width: 100.0%; height: 100.0%;">Customer 10<br>Location: Yıldız<br>Demand: 25.0</div>`)[0];
+                popup_da32e7d7e570c3e9d847ce7aad07c0ee.setContent(html_339eae6b4d4c6b85862fbe54d960c7dc);
+            
+        
+
+        marker_78930d1409580f5c1220ee78605dbd92.bindPopup(popup_da32e7d7e570c3e9d847ce7aad07c0ee)
+        ;
+
+        
+    
+    
+            var marker_d762d43dd43bf3f1c377617ecad29b1b = L.marker(
+                [41.041, 28.98],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_e605ca8ac058ec3972d78d8a9ddf098f = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_d762d43dd43bf3f1c377617ecad29b1b.setIcon(icon_e605ca8ac058ec3972d78d8a9ddf098f);
+        
+    
+        var popup_cfcbf5412872ba7007628d697e007c0a = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_13c2f38de0f830d0105f3e39d9c0e096 = $(`<div id="html_13c2f38de0f830d0105f3e39d9c0e096" style="width: 100.0%; height: 100.0%;">Customer 11<br>Location: Etiler<br>Demand: 30.0</div>`)[0];
+                popup_cfcbf5412872ba7007628d697e007c0a.setContent(html_13c2f38de0f830d0105f3e39d9c0e096);
+            
+        
+
+        marker_d762d43dd43bf3f1c377617ecad29b1b.bindPopup(popup_cfcbf5412872ba7007628d697e007c0a)
+        ;
+
+        
+    
+    
+            var marker_c6d4a3ac37dac70b9915d10c267d3843 = L.marker(
+                [41.034, 28.975],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_74072381adb3041b63771c9c6e1e97cb = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_c6d4a3ac37dac70b9915d10c267d3843.setIcon(icon_74072381adb3041b63771c9c6e1e97cb);
+        
+    
+        var popup_b955287cac6fe64cb420b3b3d3288b32 = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_9209b1879c4a2df051eda0a552e47c60 = $(`<div id="html_9209b1879c4a2df051eda0a552e47c60" style="width: 100.0%; height: 100.0%;">Customer 12<br>Location: Harbiye<br>Demand: 10.0</div>`)[0];
+                popup_b955287cac6fe64cb420b3b3d3288b32.setContent(html_9209b1879c4a2df051eda0a552e47c60);
+            
+        
+
+        marker_c6d4a3ac37dac70b9915d10c267d3843.bindPopup(popup_b955287cac6fe64cb420b3b3d3288b32)
+        ;
+
+        
+    
+    
+            var marker_c15b9f514d3b73d88b5a1e014f0205e4 = L.marker(
+                [41.043, 28.97],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_e63551c53972c01fcfbb5f547d8501ac = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_c15b9f514d3b73d88b5a1e014f0205e4.setIcon(icon_e63551c53972c01fcfbb5f547d8501ac);
+        
+    
+        var popup_402ad4dbff35b66fdc593656c89b47d0 = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_471e92cf859d14c07366e66fcaa0cb55 = $(`<div id="html_471e92cf859d14c07366e66fcaa0cb55" style="width: 100.0%; height: 100.0%;">Customer 13<br>Location: Ayazağa<br>Demand: 15.0</div>`)[0];
+                popup_402ad4dbff35b66fdc593656c89b47d0.setContent(html_471e92cf859d14c07366e66fcaa0cb55);
+            
+        
+
+        marker_c15b9f514d3b73d88b5a1e014f0205e4.bindPopup(popup_402ad4dbff35b66fdc593656c89b47d0)
+        ;
+
+        
+    
+    
+            var marker_fbdc2b186898dc47a0cfd07f0968caa7 = L.marker(
+                [41.037, 28.975],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_93bfe8dcee02abbf3975916de41ee34d = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_fbdc2b186898dc47a0cfd07f0968caa7.setIcon(icon_93bfe8dcee02abbf3975916de41ee34d);
+        
+    
+        var popup_c1891576e0ca74da00378b6d4e5d7ce1 = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_48e7b5f1a8e3aa9c7d1890be2283d42b = $(`<div id="html_48e7b5f1a8e3aa9c7d1890be2283d42b" style="width: 100.0%; height: 100.0%;">Customer 14<br>Location: Dikilitaş<br>Demand: 20.0</div>`)[0];
+                popup_c1891576e0ca74da00378b6d4e5d7ce1.setContent(html_48e7b5f1a8e3aa9c7d1890be2283d42b);
+            
+        
+
+        marker_fbdc2b186898dc47a0cfd07f0968caa7.bindPopup(popup_c1891576e0ca74da00378b6d4e5d7ce1)
+        ;
+
+        
+    
+    
+            var marker_a455f834f5be714a7dfb02b1e822c0ff = L.marker(
+                [41.039, 28.98],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_4491114babc237f71510631af032df93 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_a455f834f5be714a7dfb02b1e822c0ff.setIcon(icon_4491114babc237f71510631af032df93);
+        
+    
+        var popup_fb137888b181d41b08755a016880ce27 = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_3ed1b06026e81928ea07a0272f536945 = $(`<div id="html_3ed1b06026e81928ea07a0272f536945" style="width: 100.0%; height: 100.0%;">Customer 15<br>Location: Fulya<br>Demand: 25.0</div>`)[0];
+                popup_fb137888b181d41b08755a016880ce27.setContent(html_3ed1b06026e81928ea07a0272f536945);
+            
+        
+
+        marker_a455f834f5be714a7dfb02b1e822c0ff.bindPopup(popup_fb137888b181d41b08755a016880ce27)
+        ;
+
+        
+    
+    
+            var marker_f29c370207f3c8bd02449c07b5d1903e = L.marker(
+                [41.035, 28.975],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_5b43c4be280867bd25ba713e538902ff = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_f29c370207f3c8bd02449c07b5d1903e.setIcon(icon_5b43c4be280867bd25ba713e538902ff);
+        
+    
+        var popup_ff6c7fe2c3339ae5e558bc156b57479c = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_72927605726443380f64594d57da645a = $(`<div id="html_72927605726443380f64594d57da645a" style="width: 100.0%; height: 100.0%;">Customer 16<br>Location: Teşvikiye<br>Demand: 30.0</div>`)[0];
+                popup_ff6c7fe2c3339ae5e558bc156b57479c.setContent(html_72927605726443380f64594d57da645a);
+            
+        
+
+        marker_f29c370207f3c8bd02449c07b5d1903e.bindPopup(popup_ff6c7fe2c3339ae5e558bc156b57479c)
+        ;
+
+        
+    
+    
+            var marker_c21f54898165168b77bf0a3a44aaaeea = L.marker(
+                [41.042, 28.97],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_b5c662a86c3a769481614df4ac7bd460 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_c21f54898165168b77bf0a3a44aaaeea.setIcon(icon_b5c662a86c3a769481614df4ac7bd460);
+        
+    
+        var popup_82a372d0093530d224e329738e586efa = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_c010f86dbfa17321ca23b55e77016164 = $(`<div id="html_c010f86dbfa17321ca23b55e77016164" style="width: 100.0%; height: 100.0%;">Customer 17<br>Location: Çeliktepe<br>Demand: 10.0</div>`)[0];
+                popup_82a372d0093530d224e329738e586efa.setContent(html_c010f86dbfa17321ca23b55e77016164);
+            
+        
+
+        marker_c21f54898165168b77bf0a3a44aaaeea.bindPopup(popup_82a372d0093530d224e329738e586efa)
+        ;
+
+        
+    
+    
+            var marker_56f92bf8f3c74a42d2ad1a37fe738c46 = L.marker(
+                [41.038, 28.975],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_2d88a863b23851552869214efd0ca9f1 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_56f92bf8f3c74a42d2ad1a37fe738c46.setIcon(icon_2d88a863b23851552869214efd0ca9f1);
+        
+    
+        var popup_52d87571d99dda362471c461025e1bd3 = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_aecfc9c8d39793713bd38f323243db37 = $(`<div id="html_aecfc9c8d39793713bd38f323243db37" style="width: 100.0%; height: 100.0%;">Customer 18<br>Location: Balmumcu<br>Demand: 15.0</div>`)[0];
+                popup_52d87571d99dda362471c461025e1bd3.setContent(html_aecfc9c8d39793713bd38f323243db37);
+            
+        
+
+        marker_56f92bf8f3c74a42d2ad1a37fe738c46.bindPopup(popup_52d87571d99dda362471c461025e1bd3)
+        ;
+
+        
+    
+    
+            var marker_c72a1435dfcbef58bf1a7ea0b26d93fe = L.marker(
+                [41.04, 28.98],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_30e0d582033b6141c9a047b07d813a73 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_c72a1435dfcbef58bf1a7ea0b26d93fe.setIcon(icon_30e0d582033b6141c9a047b07d813a73);
+        
+    
+        var popup_0b0680f66f7bed106a480906f5454b6f = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_ff47ac56fa20927371d5c90bb04a5f36 = $(`<div id="html_ff47ac56fa20927371d5c90bb04a5f36" style="width: 100.0%; height: 100.0%;">Customer 19<br>Location: Levazım<br>Demand: 20.0</div>`)[0];
+                popup_0b0680f66f7bed106a480906f5454b6f.setContent(html_ff47ac56fa20927371d5c90bb04a5f36);
+            
+        
+
+        marker_c72a1435dfcbef58bf1a7ea0b26d93fe.bindPopup(popup_0b0680f66f7bed106a480906f5454b6f)
+        ;
+
+        
+    
+    
+            var marker_cae3291dce0ea0f552885ef3577ad224 = L.marker(
+                [41.036, 28.975],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_d48e718dc905db3fd13d2681abbe979b = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_cae3291dce0ea0f552885ef3577ad224.setIcon(icon_d48e718dc905db3fd13d2681abbe979b);
+        
+    
+        var popup_4b8c6d13d554325e507d521c52878d17 = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_338edf874ffceb2ff9b3013e4c173d12 = $(`<div id="html_338edf874ffceb2ff9b3013e4c173d12" style="width: 100.0%; height: 100.0%;">Customer 20<br>Location: Pangaltı<br>Demand: 25.0</div>`)[0];
+                popup_4b8c6d13d554325e507d521c52878d17.setContent(html_338edf874ffceb2ff9b3013e4c173d12);
+            
+        
+
+        marker_cae3291dce0ea0f552885ef3577ad224.bindPopup(popup_4b8c6d13d554325e507d521c52878d17)
+        ;
+
+        
+    
+    
+            var marker_324c5a879d666a0eb51855a591498801 = L.marker(
+                [41.044, 28.97],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_da5498d2633feffd9c3634af385f7246 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_324c5a879d666a0eb51855a591498801.setIcon(icon_da5498d2633feffd9c3634af385f7246);
+        
+    
+        var popup_103dd3d18db903f92b5f830ac224e910 = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_deb6546f45d751c9bb1b61b4fb425c11 = $(`<div id="html_deb6546f45d751c9bb1b61b4fb425c11" style="width: 100.0%; height: 100.0%;">Customer 21<br>Location: Seyrantepe<br>Demand: 30.0</div>`)[0];
+                popup_103dd3d18db903f92b5f830ac224e910.setContent(html_deb6546f45d751c9bb1b61b4fb425c11);
+            
+        
+
+        marker_324c5a879d666a0eb51855a591498801.bindPopup(popup_103dd3d18db903f92b5f830ac224e910)
+        ;
+
+        
+    
+    
+            var marker_2c7a30fa7013da616feee58138859bad = L.marker(
+                [41.039, 28.975],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_fa14b30f6f3609e8c4cc0beb8fd7d554 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_2c7a30fa7013da616feee58138859bad.setIcon(icon_fa14b30f6f3609e8c4cc0beb8fd7d554);
+        
+    
+        var popup_d70a4e9212134863de5c6ef2a4e850dc = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_c5f7a3a8cefb53a11ca5df304c352c0e = $(`<div id="html_c5f7a3a8cefb53a11ca5df304c352c0e" style="width: 100.0%; height: 100.0%;">Customer 22<br>Location: Zincirlikuyu<br>Demand: 10.0</div>`)[0];
+                popup_d70a4e9212134863de5c6ef2a4e850dc.setContent(html_c5f7a3a8cefb53a11ca5df304c352c0e);
+            
+        
+
+        marker_2c7a30fa7013da616feee58138859bad.bindPopup(popup_d70a4e9212134863de5c6ef2a4e850dc)
+        ;
+
+        
+    
+    
+            var marker_74987ca59a088a729db3aacd5d4bbba7 = L.marker(
+                [41.041, 28.98],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_96f80b9bd4759b365e61abd9eca95fe1 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_74987ca59a088a729db3aacd5d4bbba7.setIcon(icon_96f80b9bd4759b365e61abd9eca95fe1);
+        
+    
+        var popup_683fdb99b11f3d978a691ba2b670d404 = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_2676d9f0860116a9fbaa6741978672dc = $(`<div id="html_2676d9f0860116a9fbaa6741978672dc" style="width: 100.0%; height: 100.0%;">Customer 23<br>Location: Ulus<br>Demand: 15.0</div>`)[0];
+                popup_683fdb99b11f3d978a691ba2b670d404.setContent(html_2676d9f0860116a9fbaa6741978672dc);
+            
+        
+
+        marker_74987ca59a088a729db3aacd5d4bbba7.bindPopup(popup_683fdb99b11f3d978a691ba2b670d404)
+        ;
+
+        
+    
+    
+            var marker_4f93f877f2b2ef947ba26a0aaeb36c8c = L.marker(
+                [41.037, 28.975],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_0571e506924cc60d2f06606e08b91deb = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_4f93f877f2b2ef947ba26a0aaeb36c8c.setIcon(icon_0571e506924cc60d2f06606e08b91deb);
+        
+    
+        var popup_f513adb2e467fec43a9cc05ca35231b6 = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_2f30b39ece34d9d728a2da085ed235ab = $(`<div id="html_2f30b39ece34d9d728a2da085ed235ab" style="width: 100.0%; height: 100.0%;">Customer 24<br>Location: Osmanbey<br>Demand: 20.0</div>`)[0];
+                popup_f513adb2e467fec43a9cc05ca35231b6.setContent(html_2f30b39ece34d9d728a2da085ed235ab);
+            
+        
+
+        marker_4f93f877f2b2ef947ba26a0aaeb36c8c.bindPopup(popup_f513adb2e467fec43a9cc05ca35231b6)
+        ;
+
+        
+    
+    
+            var marker_47c60e19ff9d80f31a255b15755a7324 = L.marker(
+                [41.043, 28.97],
+                {}
+            ).addTo(map_12c157726e20ec7b80d502234ef073c2);
+        
+    
+            var icon_819184625c750971e1014fb284d505f5 = L.AwesomeMarkers.icon(
+                {"extraClasses": "fa-rotate-0", "icon": "info-sign", "iconColor": "white", "markerColor": "red", "prefix": "glyphicon"}
+            );
+            marker_47c60e19ff9d80f31a255b15755a7324.setIcon(icon_819184625c750971e1014fb284d505f5);
+        
+    
+        var popup_fb8d2cd0d8bec4ff6c78a96f7c4edccd = L.popup({"maxWidth": "100%"});
+
+        
+            
+                var html_ffa0201cdfa731995b63c82c6d4a1c26 = $(`<div id="html_ffa0201cdfa731995b63c82c6d4a1c26" style="width: 100.0%; height: 100.0%;">Customer 25<br>Location: Huzur Mahallesi<br>Demand: 25.0</div>`)[0];
+                popup_fb8d2cd0d8bec4ff6c78a96f7c4edccd.setContent(html_ffa0201cdfa731995b63c82c6d4a1c26);
+            
+        
+
+        marker_47c60e19ff9d80f31a255b15755a7324.bindPopup(popup_fb8d2cd0d8bec4ff6c78a96f7c4edccd)
+        ;
+
+        
+    
+</script>
+</html>
