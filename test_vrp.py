@@ -24,11 +24,11 @@ if __name__ == "__main__":
     routes = run_tabu_search(
         instance_name=instance_name,
         individual_size=num_customers,
-        pop_size=50,
-        n_gen=500,
-        tabu_size=20,
+        pop_size=20,
+        n_gen=150,
+        tabu_size=10,
         plot=False,
-        stagnation_limit=90,
+        stagnation_limit=20,
         verbose=True,
         use_real_distances=True,
         api_key=google_maps_api_key

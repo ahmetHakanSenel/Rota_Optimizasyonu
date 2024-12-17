@@ -122,9 +122,28 @@ class GoogleMapsHandler:
     def __init__(self, api_key):
         self.gmaps = googlemaps.Client(key=api_key)
         self.distance_cache = {}
-        self.max_workers = 10  # Paralel istek sayısı
-        self.chunk_size = 25   # Her chunk'taki istek sayısı
-        
+        self.solution_cache = {}
+        self._initialize_cache()
+    
+    def _initialize_cache(self):
+        """Cache dosyasını yükle"""
+        cache_file = os.path.join(BASE_DIR, 'cache', 'distance_cache.pkl')
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, 'rb') as f:
+                    self.distance_cache = pickle.load(f)
+            except Exception as e:
+                print(f"Error loading cache: {e}")
+    
+    def save_cache(self):
+        """Cache'i kaydet"""
+        cache_file = os.path.join(BASE_DIR, 'cache', 'distance_cache.pkl')
+        try:
+            with open(cache_file, 'wb') as f:
+                pickle.dump(self.distance_cache, f)
+        except Exception as e:
+            print(f"Error saving cache: {e}")
+    
     def calculate_batch_distances(self, coordinate_pairs):
         """Calculate distances for multiple pairs in parallel"""
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
@@ -141,24 +160,37 @@ class GoogleMapsHandler:
                     self.distance_cache[(origin, dest)] = result
     
     def calculate_single_distance(self, origin, dest):
-        """Calculate distance for a single pair"""
+        """Calculate real road distance between two points"""
         try:
-            result = self.gmaps.distance_matrix(
-                origins=[f"{origin[0]},{origin[1]}"],
-                destinations=[f"{dest[0]},{dest[1]}"],
+            # Directions API kullanarak gerçek rota mesafesini al
+            result = self.gmaps.directions(
+                origin=f"{origin[0]},{origin[1]}",
+                destination=f"{dest[0]},{dest[1]}",
                 mode="driving",
-                departure_time=datetime.now()
+                alternatives=False  # Tek rota yeterli
             )
             
-            if result['rows'][0]['elements'][0]['status'] == 'OK':
-                distance = result['rows'][0]['elements'][0]['distance']['value'] / 1000
-                duration = result['rows'][0]['elements'][0]['duration']['value'] / 60
-                return origin, dest, (distance, duration)
+            if result and len(result) > 0:
+                # Toplam mesafeyi metre->km çevir
+                distance = result[0]['legs'][0]['distance']['value'] / 1000
+                # Tahmini süreyi dakika olarak al
+                duration = result[0]['legs'][0]['duration']['value'] / 60
+                # Rota bilgisini de sakla
+                route_points = self._decode_polyline(result[0]['overview_polyline']['points'])
+                
+                return origin, dest, (distance, duration, route_points)
+                
             return origin, dest, None
             
         except Exception as e:
             print(f"Error calculating distance: {e}")
             return origin, dest, None
+
+    def _decode_polyline(self, polyline_str):
+        """Google Maps polyline'ı decode et"""
+        # Google Maps'in polyline kodlamasını çöz
+        # Bu rota üzerindeki gerçek yol noktalarını verir
+        return googlemaps.convert.decode_polyline(polyline_str)
 
 def create_navigation_link(route, instance_data):
     """Create Google Maps navigation link for the route"""
