@@ -4,7 +4,7 @@ import sys
 
 if __name__ == "__main__":
     # Test parameters
-    instance_name = "istanbultest2"
+    instance_name = "istanbultest"
     num_customers = 20
     google_maps_api_key = "AIzaSyCO3wVT_K8qgm8Ni9M1hn4lgPGqYB8l9G4"
     
@@ -24,11 +24,11 @@ if __name__ == "__main__":
     routes = run_tabu_search(
         instance_name=instance_name,
         individual_size=num_customers,
-        pop_size=20,
-        n_gen=150,
-        tabu_size=10,
+        pop_size=25,
+        n_gen=300,
+        tabu_size=15,
         plot=False,
-        stagnation_limit=20,
+        stagnation_limit=30,
         verbose=True,
         use_real_distances=True,
         api_key=google_maps_api_key

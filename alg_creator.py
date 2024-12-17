@@ -12,6 +12,7 @@ class AdaptiveTabuList:
         self.frequency = {}
         self.current_size = initial_size
         self.best_known = float('inf')
+        self.elite_solutions = []  # En iyi çözümleri sakla
     
     def add(self, solution):
         solution_tuple = tuple(solution)
@@ -25,27 +26,35 @@ class AdaptiveTabuList:
         solution_tuple = tuple(solution)
         
         # Aspiration kriteri - önemli iyileştirme varsa kabul et
-        if aspiration_value is not None and aspiration_value < self.best_known * 0.95:
-            self.best_known = aspiration_value
-            return False
+        if aspiration_value is not None:
+            if aspiration_value < self.best_known * 0.95:  # %5 iyileştirme
+                self.best_known = aspiration_value
+                self.elite_solutions.append((solution_tuple, aspiration_value))
+                return False
+            elif aspiration_value < current_best * 0.98:  # %2 iyileştirme
+                return False
         
         # Çözüm frekansını kontrol et
         if self.frequency.get(solution_tuple, 0) > 3:
             return True
         
         # Son N çözümde varsa yasakla
-        recent_solutions = list(self.list)[-5:]  # Son 5 çözüm
+        recent_solutions = list(self.list)[-5:]
         if solution_tuple in recent_solutions:
             return True
         
         return False
     
     def clear(self):
-        """Tabu listesini ve frekans sayacını temizle"""
+        """Tabu listesini temizle ama elit çözümleri koru"""
         self.list.clear()
         self.frequency.clear()
         self.current_size = len(self.list)
-        self.best_known = float('inf')
+        
+        # En iyi çözümleri geri yükle
+        if self.elite_solutions:
+            best_elite = min(self.elite_solutions, key=lambda x: x[1])
+            self.best_known = best_elite[1]
 
 def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size, 
                     plot=False, stagnation_limit=50, verbose=True, 
@@ -61,7 +70,15 @@ def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size,
     
     best_solution = None
     best_distance = float('inf')
-    tabu_list = AdaptiveTabuList(tabu_size, tabu_size * 2)
+    last_best_distance = float('inf')
+    same_value_counter = 0
+    
+    # Başlangıç parametreleri
+    current_tabu_size = tabu_size
+    current_max_neighbors = 15
+    current_stagnation_limit = stagnation_limit
+    
+    tabu_list = AdaptiveTabuList(current_tabu_size, current_tabu_size * 2)
     stagnation_counter = 0
     
     current_solution = create_initial_solution(instance, individual_size, maps_handler)
@@ -85,37 +102,37 @@ def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size,
         
         return True
     
-    def optimize_route_segments(route, instance, maps_handler):
-        """Rota segmentlerini optimize et"""
-        optimized = route.copy()
-        improved = True
-        while improved:
-            improved = False
-            for i in range(len(optimized) - 2):
-                # 2-opt swap
-                new_route = optimized.copy()
-                new_route[i+1], new_route[i+2] = new_route[i+2], new_route[i+1]
-                
-                if check_route_validity(new_route, instance):
-                    old_distance = evaluate_solution_with_real_distances(optimized, instance, maps_handler)
-                    new_distance = evaluate_solution_with_real_distances(new_route, instance, maps_handler)
-                    
-                    if new_distance < old_distance:
-                        optimized = new_route
-                        improved = True
-        
-        return optimized
-    
     # Ana döngü
     for iteration in range(n_gen):
-        if stagnation_counter >= 20:
+        # Her 50 iterasyonda bir yoğun arama yap
+        if iteration > 0 and iteration % 50 == 0:
+            # En iyi çözümün etrafında yoğun arama
+            intense_neighbors = []
+            for _ in range(30):  # Daha fazla komşu üret
+                new_sol = best_solution.copy()
+                # Küçük değişiklikler yap
+                for _ in range(random.randint(1, 3)):
+                    i, j = random.sample(range(len(new_sol)), 2)
+                    new_sol[i], new_sol[j] = new_sol[j], new_sol[i]
+                intense_neighbors.append(new_sol)
+            
+            # Yoğun arama sonuçlarını değerlendir
+            for neighbor in intense_neighbors:
+                distance = evaluate_solution_with_real_distances(neighbor, instance, maps_handler)
+                if distance < best_distance:
+                    best_solution = neighbor.copy()
+                    best_distance = distance
+                    if verbose:
+                        print(f"\nImproved solution found in intense search: {best_distance:.2f} km")
+        
+        if stagnation_counter >= current_stagnation_limit:
             current_solution = diversify_solution(current_solution)
             current_distance = evaluate_solution_with_real_distances(current_solution, instance, maps_handler)
             stagnation_counter = 0
             tabu_list.clear()
         
         # Komşuları üret ve paralel değerlendir
-        neighbors = generate_neighbors(current_solution, instance, maps_handler)
+        neighbors = generate_neighbors(current_solution, instance, maps_handler, max_neighbors=current_max_neighbors)
         neighbor_distances = evaluate_neighbors_parallel(neighbors, instance, maps_handler)
         
         # En iyi komşuyu seç
@@ -138,11 +155,35 @@ def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size,
         else:
             stagnation_counter += 1
         
+        # Aynı değerde kalma kontrolü
+        if abs(best_distance - last_best_distance) < 0.01:  # 10 metre hassasiyet
+            same_value_counter += 1
+        else:
+            same_value_counter = 0
+            last_best_distance = best_distance
+        
+        # 5 iterasyon boyunca aynı değerde kaldıysa parametreleri değiştir
+        if same_value_counter >= 5:
+            # Tabu listesi boyutunu değiştir
+            current_tabu_size = max(5, min(30, current_tabu_size + random.randint(-3, 5)))
+            tabu_list = AdaptiveTabuList(current_tabu_size, current_tabu_size * 2)
+            
+            # Komşu sayısını değiştir
+            current_max_neighbors = max(10, min(30, current_max_neighbors + random.randint(-3, 5)))
+            
+            # Durağanlık limitini değiştir
+            current_stagnation_limit = max(15, min(50, current_stagnation_limit + random.randint(-5, 8)))
+            
+            # Sayacı sıfırla
+            same_value_counter = 0
+            
+            if verbose:
+                print(f"\nParameters adjusted - Tabu size: {current_tabu_size}, "
+                      f"Max neighbors: {current_max_neighbors}, "
+                      f"Stagnation limit: {current_stagnation_limit}")
+        
         if verbose and iteration % 10 == 0:
             print(f"Iteration {iteration}, Best distance: {best_distance:.2f} km")
-        
-        if stagnation_counter >= stagnation_limit:
-            break
     
     return decode_solution(best_solution, instance) if best_solution else None
 
@@ -150,54 +191,71 @@ def diversify_solution(solution):
     """Çözümü çeşitlendirmek için geliştirilmiş fonksiyon"""
     n = len(solution)
     
-    # Farklı çeşitlendirme stratejileri
+    # Daha agresif çeşitlendirme stratejileri
     strategies = [
-        # Rastgele alt diziyi ters çevir
-        lambda s: s[:i] + list(reversed(s[i:j])) + s[j:] if (i := random.randint(0, n-2), j := random.randint(i+1, n))[0] >= 0 else s,
+        # Büyük segment reverse
+        lambda s: s[:i] + list(reversed(s[i:j])) + s[j:] 
+        if (i := random.randint(0, n//3), j := random.randint(n*2//3, n))[0] >= 0 else s,
         
-        # Block relocation
-        lambda s: s[k:] + s[:k] if (k := random.randint(1, n-1)) else s,
+        # Multiple swap
+        lambda s: [s[random.randint(0, n-1)] if random.random() < 0.3 else s[i] for i in range(n)],
         
-        # Rastgele swap operations
-        lambda s: [s[j] if i == k else s[k] if i == j else s[i] for i in range(n)] 
-        if (j := random.randint(0, n-1), k := random.randint(0, n-1))[0] >= 0 else s,
+        # Segment rotation
+        lambda s: s[k:] + s[:k] if (k := random.randint(n//4, n*3//4)) else s,
+        
+        # Random shuffle of a segment
+        lambda s: (s[:i] + random.sample(s[i:j], j-i) + s[j:]) 
+        if (i := random.randint(0, n//2), j := random.randint(i+2, n))[0] >= 0 else s,
     ]
     
-    # Rastgele bir strateji seç ve uygula
-    new_solution = random.choice(strategies)(solution.copy())
+    # Birden fazla strateji uygula
+    new_solution = solution.copy()
+    for _ in range(random.randint(1, 3)):
+        new_solution = random.choice(strategies)(new_solution)
     
     # Çözümün geçerliliğini kontrol et
     if len(set(new_solution)) != len(solution):
-        return solution  # Geçersizse orijinal çözümü döndür
+        return solution
     
     return new_solution
 
 def generate_neighbors(solution, instance, map_handler, max_neighbors=15):
-    """Generate neighbors focusing on route optimization"""
+    """Generate smarter neighbors"""
     neighbors = []
     n = len(solution)
     
-    # 1. 2-opt moves
-    for i in range(n-1):
-        for j in range(i+1, n):
+    # 1. 2-opt moves with varying segment sizes
+    segment_sizes = [(2,4), (3,6), (4,8)]  # Farklı segment boyutları
+    for min_size, max_size in segment_sizes:
+        for i in range(n-min_size):
+            j = min(i + random.randint(min_size, max_size), n)
             new_sol = solution.copy()
-            new_sol[i:j+1] = reversed(new_sol[i:j+1])
+            new_sol[i:j] = reversed(new_sol[i:j])
             neighbors.append(new_sol)
-            
-            if len(neighbors) >= max_neighbors:
-                return neighbors
     
-    # 2. Swap moves
-    for i in range(n):
-        for j in range(i+1, n):
-            new_sol = solution.copy()
-            new_sol[i], new_sol[j] = new_sol[j], new_sol[i]
-            neighbors.append(new_sol)
-            
-            if len(neighbors) >= max_neighbors:
-                return neighbors
+    # 2. Chain moves (3 noktayı birden değiştir)
+    for i in range(n-2):
+        new_sol = solution.copy()
+        j, k = i+1, i+2
+        new_sol[i], new_sol[j], new_sol[k] = new_sol[k], new_sol[i], new_sol[j]
+        neighbors.append(new_sol)
     
-    return neighbors
+    # 3. Block insertion (blok taşıma)
+    block_sizes = [2, 3, 4]
+    for size in block_sizes:
+        if n > size * 2:
+            for i in range(n - size):
+                block = solution[i:i+size]
+                for j in range(n - size):
+                    if abs(i-j) > size:
+                        new_sol = solution.copy()
+                        del new_sol[i:i+size]
+                        new_sol[j:j] = block
+                        neighbors.append(new_sol)
+    
+    # Komşuları karıştır ve en iyilerini seç
+    random.shuffle(neighbors)
+    return neighbors[:max_neighbors]
 
 def evaluate_solution_with_real_distances(solution, instance, map_handler):
     """Calculate total distance using real road network"""
@@ -249,15 +307,18 @@ def evaluate_solution_with_real_distances(solution, instance, map_handler):
 
 def create_initial_solution(instance, size, map_handler):
     """Create initial solution using nearest neighbor"""
+    print("\nCreating initial solution...")
     solution = []
     available = set(range(1, size + 1))
     
     # Depodan başla
     depot = (instance[DEPART][COORDINATES][X_COORD],
              instance[DEPART][COORDINATES][Y_COORD])
+    print(f"Starting from depot at coordinates: ({depot[0]:.4f}, {depot[1]:.4f})")
     
     current = depot
     while available:
+        print(f"\nFinding nearest customer to ({current[0]:.4f}, {current[1]:.4f})")
         # En yakın müşteriyi bul
         min_dist = float('inf')
         next_customer = None
@@ -270,19 +331,25 @@ def create_initial_solution(instance, size, map_handler):
             result = map_handler.calculate_single_distance(current, next_point)
             if result and result[2]:
                 dist = result[2][0]
+                print(f"Distance to customer {customer_id}: {dist:.2f} km")
                 if dist < min_dist:
                     min_dist = dist
                     next_customer = customer_id
         
         if next_customer:
+            print(f"Selected customer {next_customer} at distance {min_dist:.2f} km")
             solution.append(next_customer)
             available.remove(next_customer)
             current = (instance[f'C_{next_customer}'][COORDINATES][X_COORD],
                       instance[f'C_{next_customer}'][COORDINATES][Y_COORD])
         else:
-            # Eğer mesafe hesaplanamadıysa kalan noktaları ekle
+            print("Warning: Could not calculate distances, adding remaining customers randomly")
             solution.extend(available)
             break
+    
+    print(f"\nInitial solution created: {solution}")
+    initial_distance = evaluate_solution_with_real_distances(solution, instance, map_handler)
+    print(f"Initial solution distance: {initial_distance:.2f} km")
     
     return solution
 
