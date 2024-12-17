@@ -102,88 +102,83 @@ def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size,
         
         return True
     
+    print("Starting Tabu Search optimization...")
+    print(f"Parameters: generations={n_gen}, tabu_size={tabu_size}, stagnation_limit={stagnation_limit}")
+    
     # Ana döngü
     for iteration in range(n_gen):
-        # Her 50 iterasyonda bir yoğun arama yap
-        if iteration > 0 and iteration % 50 == 0:
-            # En iyi çözümün etrafında yoğun arama
-            intense_neighbors = []
-            for _ in range(30):  # Daha fazla komşu üret
-                new_sol = best_solution.copy()
-                # Küçük değişiklikler yap
-                for _ in range(random.randint(1, 3)):
-                    i, j = random.sample(range(len(new_sol)), 2)
-                    new_sol[i], new_sol[j] = new_sol[j], new_sol[i]
-                intense_neighbors.append(new_sol)
-            
-            # Yoğun arama sonuçlarını değerlendir
-            for neighbor in intense_neighbors:
-                distance = evaluate_solution_with_real_distances(neighbor, instance, maps_handler)
-                if distance < best_distance:
-                    best_solution = neighbor.copy()
-                    best_distance = distance
-                    if verbose:
-                        print(f"\nImproved solution found in intense search: {best_distance:.2f} km")
+        print(f"\nIteration {iteration}:")
         
         if stagnation_counter >= current_stagnation_limit:
+            print("Stagnation detected! Diversifying solution...")
             current_solution = diversify_solution(current_solution)
             current_distance = evaluate_solution_with_real_distances(current_solution, instance, maps_handler)
+            print(f"New diversified solution distance: {current_distance:.2f} km")
             stagnation_counter = 0
             tabu_list.clear()
         
-        # Komşuları üret ve paralel değerlendir
+        print("Generating neighbors...")
         neighbors = generate_neighbors(current_solution, instance, maps_handler, max_neighbors=current_max_neighbors)
-        neighbor_distances = evaluate_neighbors_parallel(neighbors, instance, maps_handler)
+        print(f"Generated {len(neighbors)} neighbors")
         
-        # En iyi komşuyu seç
+        print("Evaluating neighbors in parallel...")
+        neighbor_distances = evaluate_neighbors_parallel(neighbors, instance, maps_handler)
+        print(f"Found {len(neighbor_distances)} valid neighbors")
+        
         if neighbor_distances:
             best_neighbor, best_neighbor_distance = min(neighbor_distances, key=lambda x: x[1])
+            print(f"Best neighbor distance: {best_neighbor_distance:.2f} km")
             
             if not tabu_list.contains(best_neighbor, best_neighbor_distance, best_distance):
+                print("Best neighbor accepted (not in tabu list)")
                 current_solution = best_neighbor
                 current_distance = best_neighbor_distance
                 tabu_list.add(current_solution)
                 
                 if best_neighbor_distance < best_distance:
+                    improvement = ((best_distance - best_neighbor_distance) / best_distance) * 100
+                    print(f"New best solution found! Improvement: {improvement:.2f}%")
                     best_solution = best_neighbor.copy()
                     best_distance = best_neighbor_distance
                     stagnation_counter = 0
                 else:
+                    print("No improvement in best solution")
                     stagnation_counter += 1
             else:
+                print("Best neighbor rejected (in tabu list)")
                 stagnation_counter += 1
         else:
+            print("No valid neighbors found")
             stagnation_counter += 1
         
         # Aynı değerde kalma kontrolü
-        if abs(best_distance - last_best_distance) < 0.01:  # 10 metre hassasiyet
+        if abs(best_distance - last_best_distance) < 0.01:
             same_value_counter += 1
+            print(f"Solution unchanged for {same_value_counter} iterations")
         else:
             same_value_counter = 0
             last_best_distance = best_distance
         
-        # 5 iterasyon boyunca aynı değerde kaldıysa parametreleri değiştir
+        # Parametre ayarlama
         if same_value_counter >= 5:
-            # Tabu listesi boyutunu değiştir
+            print("\nAdjusting parameters...")
             current_tabu_size = max(5, min(30, current_tabu_size + random.randint(-3, 5)))
-            tabu_list = AdaptiveTabuList(current_tabu_size, current_tabu_size * 2)
-            
-            # Komşu sayısını değiştir
             current_max_neighbors = max(10, min(30, current_max_neighbors + random.randint(-3, 5)))
-            
-            # Durağanlık limitini değiştir
             current_stagnation_limit = max(15, min(50, current_stagnation_limit + random.randint(-5, 8)))
             
-            # Sayacı sıfırla
-            same_value_counter = 0
+            print(f"New parameters - Tabu size: {current_tabu_size}, "
+                  f"Max neighbors: {current_max_neighbors}, "
+                  f"Stagnation limit: {current_stagnation_limit}")
             
-            if verbose:
-                print(f"\nParameters adjusted - Tabu size: {current_tabu_size}, "
-                      f"Max neighbors: {current_max_neighbors}, "
-                      f"Stagnation limit: {current_stagnation_limit}")
+            tabu_list = AdaptiveTabuList(current_tabu_size, current_tabu_size * 2)
+            same_value_counter = 0
         
-        if verbose and iteration % 10 == 0:
-            print(f"Iteration {iteration}, Best distance: {best_distance:.2f} km")
+        print(f"\nCurrent best distance: {best_distance:.2f} km")
+        print(f"Stagnation counter: {stagnation_counter}")
+    
+    print("\nOptimization completed!")
+    print(f"Final best distance: {best_distance:.2f} km")
+    print(f"Final solution: {best_solution}")
     
     return decode_solution(best_solution, instance) if best_solution else None
 
@@ -306,50 +301,16 @@ def evaluate_solution_with_real_distances(solution, instance, map_handler):
         return float('inf')
 
 def create_initial_solution(instance, size, map_handler):
-    """Create initial solution using nearest neighbor"""
+    """Create simple initial solution"""
     print("\nCreating initial solution...")
-    solution = []
-    available = set(range(1, size + 1))
     
-    # Depodan başla
-    depot = (instance[DEPART][COORDINATES][X_COORD],
-             instance[DEPART][COORDINATES][Y_COORD])
-    print(f"Starting from depot at coordinates: ({depot[0]:.4f}, {depot[1]:.4f})")
+    # Basit sıralı çözüm oluştur
+    solution = list(range(1, size + 1))
+    random.shuffle(solution)  # Rastgele karıştır
     
-    current = depot
-    while available:
-        print(f"\nFinding nearest customer to ({current[0]:.4f}, {current[1]:.4f})")
-        # En yakın müşteriyi bul
-        min_dist = float('inf')
-        next_customer = None
-        
-        for customer_id in available:
-            next_point = (instance[f'C_{customer_id}'][COORDINATES][X_COORD],
-                         instance[f'C_{customer_id}'][COORDINATES][Y_COORD])
-            
-            # Gerçek yol mesafesini kullan
-            result = map_handler.calculate_single_distance(current, next_point)
-            if result and result[2]:
-                dist = result[2][0]
-                print(f"Distance to customer {customer_id}: {dist:.2f} km")
-                if dist < min_dist:
-                    min_dist = dist
-                    next_customer = customer_id
-        
-        if next_customer:
-            print(f"Selected customer {next_customer} at distance {min_dist:.2f} km")
-            solution.append(next_customer)
-            available.remove(next_customer)
-            current = (instance[f'C_{next_customer}'][COORDINATES][X_COORD],
-                      instance[f'C_{next_customer}'][COORDINATES][Y_COORD])
-        else:
-            print("Warning: Could not calculate distances, adding remaining customers randomly")
-            solution.extend(available)
-            break
-    
-    print(f"\nInitial solution created: {solution}")
+    print(f"Initial solution created: {solution}")
     initial_distance = evaluate_solution_with_real_distances(solution, instance, map_handler)
-    print(f"Initial solution distance: {initial_distance:.2f} km")
+    print(f"Initial solution distance: {initial_distance:.2f} km\n")
     
     return solution
 
@@ -359,15 +320,25 @@ def decode_solution(solution, instance):
 
 def evaluate_neighbors_parallel(neighbors, instance, map_handler, batch_size=5):
     """Komşuları paralel olarak değerlendir"""
+    print(f"Starting parallel evaluation of {len(neighbors)} neighbors...")
     neighbor_distances = []
     
-    with ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
+    # CPU sayısının yarısını kullan (diğer işlemler için CPU bırak)
+    max_workers = max(2, multiprocessing.cpu_count() // 2)
+    print(f"Using {max_workers} workers for parallel processing")
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_neighbor = {
             executor.submit(evaluate_solution_with_real_distances, n, instance, map_handler): n 
             for n in neighbors
         }
         
+        completed = 0
         for future in as_completed(future_to_neighbor):
+            completed += 1
+            if completed % 5 == 0:  # Her 5 değerlendirmede bir rapor ver
+                print(f"Evaluated {completed}/{len(neighbors)} neighbors")
+                
             neighbor = future_to_neighbor[future]
             try:
                 distance = future.result()
@@ -376,4 +347,5 @@ def evaluate_neighbors_parallel(neighbors, instance, map_handler, batch_size=5):
             except Exception as e:
                 print(f"Error evaluating neighbor: {e}")
     
+    print(f"Parallel evaluation completed. Found {len(neighbor_distances)} valid neighbors")
     return neighbor_distances
