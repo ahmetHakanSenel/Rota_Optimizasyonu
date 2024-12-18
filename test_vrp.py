@@ -4,7 +4,7 @@ import sys
 
 if __name__ == "__main__":
     # Test parameters
-    instance_name = "istanbultest2"
+    instance_name = "istanbultest"
     num_customers = 20
     
     print("Loading problem instance...")

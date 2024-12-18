@@ -1,45 +1,45 @@
-## Vehicle Routing Problem with Real Road Distances
+# Vehicle Routing Problem with Real Road Distances
 
-### Overview
-This application solves the Vehicle Routing Problem (VRP) using real road distances from OpenStreetMap. It is divided into several modules:
+## Overview
+This application solves the Vehicle Routing Problem (VRP) using real road distances from OpenStreetMap (OSRM) and provides navigation through GraphHopper. The solution is based on an enhanced Tabu Search algorithm with adaptive neighborhood structures.
 
-- **Data preprocessing** (`process_data.py`): 
-  - Loads problem instances from data files
-  - Handles coordinate conversions
-  - Calculates real road distances using OpenStreetMap
-  - Visualizes routes on interactive maps
+### Components
+- **Data Processing** (`process_data.py`): 
+  - Loads problem instances
+  - Calculates real road distances using OSRM
+  - Handles distance matrix caching
+  - Creates GraphHopper navigation links
 
-- **Core functions** (`core_funs.py`):
-  - Route generation and validation
+- **Core Functions** (`core_funs.py`):
+  - Adaptive neighborhood generation
+  - Parallel solution evaluation
   - Distance calculations
-  - Tabu list management
-  - Neighborhood generation
+  - Solution diversification
 
-- **Algorithm implementations** (`alg_creator.py`):
-  - Particle Swarm Optimization (PSO)
-  - Tabu Search
-  - Route visualization and optimization
-
-- **Route optimization** (`route_optimizer.py`):
-  - OR-Tools based VRP solver
-  - Handles capacity constraints
-  - Optimizes for real road distances
+- **Algorithm** (`alg_creator.py`):
+  - Enhanced Tabu Search implementation
+  - Adaptive parameter tuning
+  - Multiple neighborhood structures
+  - Solution tracking and improvement
 
 ### Features
-- Real road distance calculations using OpenStreetMap
-- Interactive route visualization on maps
-- Multiple optimization algorithms (PSO, Tabu Search)
-- Support for capacity constraints
-- Navigation link generation for Google Maps
-- Early stopping for efficiency
+- Real road distance calculations using OSRM
+- GraphHopper navigation integration
+- Adaptive Tabu Search with:
+  - Multiple neighborhood structures
+  - Dynamic parameter adjustment
+  - Solution diversification
+  - Parallel evaluation
+- Efficient caching system
+- Early stopping mechanism
 
 ### Quick Start
 1. Install requirements:
 ```bash
-pip install -r requirements.txt
+pip install requests polyline
 ```
 
-2. Run the test script:
+2. Run with default parameters:
 ```bash
 python test_vrp.py
 ```
@@ -61,33 +61,26 @@ NodeID Latitude Longitude Demand ReadyTime DueTime ServiceTime # Location
 Example:
 ```
 Istanbul VRP Test Instance
-4 100
+25 500
 0 41.0082 28.9784 0 0 1000 0 # Depot (Mecidiyeköy)
-1 41.035 28.975 10 0 1000 30 # Şişli
+1 41.035 28.975 10 0 1000 10 # Şişli
 ...
 ```
 
-### Parameters
-Key parameters that can be modified:
-- `num_customers`: Number of delivery locations
-- `pop_size`: Population size for metaheuristics
-- `n_gen`: Number of generations/iterations
-- `tabu_size`: Size of tabu list
-- `stagnation_limit`: Early stopping threshold
-- `vehicle_capacity`: Maximum vehicle capacity
+### Algorithm Parameters
+- `individual_size`: Number of delivery locations
+- `pop_size`: Initial population size
+- `n_gen`: Maximum iterations
+- `tabu_size`: Initial tabu list size
+- `stagnation_limit`: Diversification threshold
 
-### Visualization
-The application generates two types of visualizations:
-1. Initial locations map (`initial_locations.html`)
-2. Optimized routes map (`route_map.html`)
+### Neighborhood Structures
+The algorithm uses multiple neighborhood structures with adaptive weights:
+- Swap: Multiple point exchanges
+- Insert: Sequential point movements
+- Reverse: Segment reversals
+- Scramble: Segment shuffling
+- Block Move: Block relocations
+- Cross: Cross-exchange operations
 
-Both maps are interactive and show:
-- Depot location
-- Customer locations with demands
-- Route segments with arrows
-- Distance information
-
-### References
-- OpenStreetMap for road network data
-- OR-Tools for basic VRP solving
-- Folium for map visualization
+Each structure's weight is dynamically adjusted based on its success in finding improvements.
