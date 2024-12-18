@@ -2,6 +2,9 @@ import random
 import operator
 import math
 import collections
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 from deap import base, creator, tools # type: ignore
 from process_data import *
@@ -227,32 +230,183 @@ def generate_neighbors(solution, method="swap", num_neighbors=5):
     neighbors = []
     size = len(solution)
     
+    # Dinamik segment boyutları
+    segment_size = max(2, size // 10)  # Çözüm boyutuna göre segment boyutu
+    
     for _ in range(num_neighbors):
         # Yeni bir birey oluştur
-        neighbor = creator.Individual(solution[:])
+        neighbor = solution.copy()
             
         # Farklı komşuluk yapıları
         if method == "swap":
-            # İki noktayı değiştir
-            i, j = random.sample(range(size), 2)
-            neighbor[i], neighbor[j] = neighbor[j], neighbor[i]
+            # Çoklu nokta değişimi
+            num_swaps = random.randint(1, 3)  # 1-3 arası swap
+            for _ in range(num_swaps):
+                i, j = random.sample(range(size), 2)
+                neighbor[i], neighbor[j] = neighbor[j], neighbor[i]
+                
         elif method == "insert":
-            # Bir noktayı farklı bir konuma taşı
-            i, j = random.sample(range(size), 2)
-            value = neighbor[i]
-            neighbor.pop(i)
-            neighbor.insert(j, value)
+            # Çoklu nokta taşıma
+            num_inserts = random.randint(1, 3)  # 1-3 arası insert
+            for _ in range(num_inserts):
+                i, j = random.sample(range(size), 2)
+                value = neighbor.pop(i)
+                neighbor.insert(j, value)
+                
         elif method == "reverse":
-            # Alt diziyi tersine çevir
-            i, j = sorted(random.sample(range(size), 2))
-            neighbor[i:j+1] = reversed(neighbor[i:j+1])
+            # Akıllı segment seçimi
+            # Daha küçük segmentleri daha sık seç
+            if random.random() < 0.7:  # %70 olasılıkla küçük segment
+                max_segment = min(5, size // 4)
+            else:  # %30 olasılıkla büyük segment
+                max_segment = min(size // 2, 10)
+                
+            i = random.randint(0, size - max_segment)
+            j = i + random.randint(2, max_segment)
+            neighbor[i:j] = reversed(neighbor[i:j])
+                
         elif method == "scramble":
-            # Alt diziyi karıştır
-            i, j = sorted(random.sample(range(size), 2))
-            sublist = neighbor[i:j+1]
+            # Adaptif segment karıştırma
+            if random.random() < 0.6:  # %60 olasılıkla küçük karıştırma
+                seg_size = random.randint(2, min(5, size // 4))
+            else:  # %40 olasılıkla büyük karıştırma
+                seg_size = random.randint(size // 4, size // 2)
+                
+            i = random.randint(0, size - seg_size)
+            sublist = neighbor[i:i + seg_size]
             random.shuffle(sublist)
-            neighbor[i:j+1] = sublist
+            neighbor[i:i + seg_size] = sublist
+            
+        elif method == "block_move":
+            # Blok taşıma operatörü
+            block_size = random.randint(2, min(5, size // 4))
+            i = random.randint(0, size - block_size)
+            j = random.randint(0, size - block_size)
+            
+            if i != j:
+                block = neighbor[i:i + block_size]
+                del neighbor[i:i + block_size]
+                neighbor[j:j] = block
+                
+        elif method == "cross":
+            # Çapraz değişim operatörü
+            if size >= 4:
+                i = random.randint(0, size - 4)
+                neighbor[i:i+2], neighbor[i+2:i+4] = neighbor[i+2:i+4], neighbor[i:i+2].copy()
             
         neighbors.append(neighbor)
             
     return neighbors
+
+def evaluate_solution_with_real_distances(solution, instance, map_handler):
+    """Calculate total distance using real road network"""
+    total_distance = 0
+    previous_point = (
+        instance[DEPART][COORDINATES][X_COORD],
+        instance[DEPART][COORDINATES][Y_COORD]
+    )
+    
+    try:
+        # Calculate distances between consecutive points
+        for customer_id in solution:
+            current_point = (
+                instance[f'C_{customer_id}'][COORDINATES][X_COORD],
+                instance[f'C_{customer_id}'][COORDINATES][Y_COORD]
+            )
+            
+            # Get distance from OSRM
+            leg_distance = map_handler.get_distance(previous_point, current_point)
+            if leg_distance == float('inf'):
+                return float('inf')
+            
+            total_distance += leg_distance
+            previous_point = current_point
+        
+        # Add return to depot
+        depot_point = (
+            instance[DEPART][COORDINATES][X_COORD],
+            instance[DEPART][COORDINATES][Y_COORD]
+        )
+        final_leg = map_handler.get_distance(previous_point, depot_point)
+        if final_leg == float('inf'):
+            return float('inf')
+        
+        total_distance += final_leg
+        return total_distance
+        
+    except Exception as e:
+        print(f"Error calculating route: {str(e)}")
+        return float('inf')
+
+def evaluate_neighbors_parallel(neighbors, instance, map_handler, batch_size=5):
+    """Komşuları paralel olarak değerlendir"""
+    print(f"Starting parallel evaluation of {len(neighbors)} neighbors...")
+    neighbor_distances = []
+    
+    # CPU sayısının yarısını kullan (diğer işlemler için CPU bırak)
+    max_workers = max(2, multiprocessing.cpu_count() // 2)
+    print(f"Using {max_workers} workers for parallel processing")
+    
+    def evaluate_single_neighbor(neighbor):
+        try:
+            distance = evaluate_solution_with_real_distances(neighbor, instance, map_handler)
+            if distance != float('inf'):
+                return neighbor, distance
+            return None
+        except Exception as e:
+            print(f"Error evaluating neighbor: {str(e)}")
+            return None
+    
+    # Komşuları gruplara böl
+    batch_size = min(batch_size, len(neighbors))
+    neighbor_batches = [neighbors[i:i + batch_size] for i in range(0, len(neighbors), batch_size)]
+    
+    for batch in neighbor_batches:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(evaluate_single_neighbor, n) for n in batch]
+            
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                    if result:
+                        neighbor_distances.append(result)
+                except Exception as e:
+                    print(f"Error processing neighbor result: {str(e)}")
+        
+        # Her batch sonrası kısa bir bekleme
+        time.sleep(0.1)
+    
+    print(f"Parallel evaluation completed. Found {len(neighbor_distances)} valid neighbors")
+    return neighbor_distances
+
+def diversify_solution(solution):
+    """Çözümü çeşitlendirmek için geliştirilmiş fonksiyon"""
+    n = len(solution)
+    
+    # Daha agresif çeşitlendirme stratejileri
+    strategies = [
+        # Büyük segment reverse
+        lambda s: s[:i] + list(reversed(s[i:j])) + s[j:] 
+        if (i := random.randint(0, n//3), j := random.randint(n*2//3, n))[0] >= 0 else s,
+        
+        # Multiple swap
+        lambda s: [s[random.randint(0, n-1)] if random.random() < 0.3 else s[i] for i in range(n)],
+        
+        # Segment rotation
+        lambda s: s[k:] + s[:k] if (k := random.randint(n//4, n*3//4)) else s,
+        
+        # Random shuffle of a segment
+        lambda s: (s[:i] + random.sample(s[i:j], j-i) + s[j:]) 
+        if (i := random.randint(0, n//2), j := random.randint(i+2, n))[0] >= 0 else s,
+    ]
+    
+    # Birden fazla strateji uygula
+    new_solution = solution.copy()
+    for _ in range(random.randint(1, 3)):
+        new_solution = random.choice(strategies)(new_solution)
+    
+    # Çözümün geçerliliğini kontrol et
+    if len(set(new_solution)) != len(solution):
+        return solution
+    
+    return new_solution

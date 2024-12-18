@@ -6,7 +6,6 @@ if __name__ == "__main__":
     # Test parameters
     instance_name = "istanbultest2"
     num_customers = 20
-    google_maps_api_key = "AIzaSyCO3wVT_K8qgm8Ni9M1hn4lgPGqYB8l9G4"
     
     print("Loading problem instance...")
     try:
@@ -26,20 +25,19 @@ if __name__ == "__main__":
         individual_size=num_customers,
         pop_size=25,
         n_gen=300,
-        tabu_size=15,
+        tabu_size=20,
         plot=False,
         stagnation_limit=30,
         verbose=True,
-        use_real_distances=True,
-        api_key=google_maps_api_key
+        use_real_distances=True
     )
     
     if routes:
         print("\nOptimal routes found!")
         
-        # Create Google Maps navigation link
+        # Create GraphHopper navigation link
         nav_url = create_navigation_link(routes, instance)
-        print("\nGoogle Maps Navigation Link:")
+        print("\nGraphHopper Navigation Link:")
         print(nav_url)
     else:
         print("No solution found!")

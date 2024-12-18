@@ -1,10 +1,12 @@
 import os
 import io
 from datetime import datetime
-import googlemaps
 import pickle
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import traceback
+import requests
+import polyline
+import time
 
 # Use a single BASE_DIR definition that works cross-platform
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -118,89 +120,104 @@ class ProblemInstance:
             traceback.print_exc()
             return None
 
-class GoogleMapsHandler:
-    def __init__(self, api_key):
-        self.gmaps = googlemaps.Client(key=api_key)
-        self.distance_cache = {}
-        self.solution_cache = {}
+class OSRMHandler:
+    def __init__(self):
+        self.base_url = "http://router.project-osrm.org"
+        self.distance_matrix = {}
+        self.timeout = 30  # Timeout süresini 30 saniyeye çıkaralım
+        self.max_retries = 3  # Başarısız istekleri 3 kez deneyelim
         self._initialize_cache()
     
     def _initialize_cache(self):
         """Cache dosyasını yükle"""
-        cache_file = os.path.join(BASE_DIR, 'cache', 'distance_cache.pkl')
+        cache_dir = os.path.join(BASE_DIR, 'cache')
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_file = os.path.join(cache_dir, 'osrm_distance_matrix.pkl')
         if os.path.exists(cache_file):
             try:
                 with open(cache_file, 'rb') as f:
-                    self.distance_cache = pickle.load(f)
+                    self.distance_matrix = pickle.load(f)
+                print("Loaded distance matrix from cache")
             except Exception as e:
                 print(f"Error loading cache: {e}")
+                self.distance_matrix = {}
     
     def save_cache(self):
         """Cache'i kaydet"""
-        cache_file = os.path.join(BASE_DIR, 'cache', 'distance_cache.pkl')
+        cache_file = os.path.join(BASE_DIR, 'cache', 'osrm_distance_matrix.pkl')
         try:
             with open(cache_file, 'wb') as f:
-                pickle.dump(self.distance_cache, f)
+                pickle.dump(self.distance_matrix, f)
+            print("Saved distance matrix to cache")
         except Exception as e:
             print(f"Error saving cache: {e}")
     
-    def calculate_batch_distances(self, coordinate_pairs):
-        """Calculate distances for multiple pairs in parallel"""
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = []
-            for origin, dest in coordinate_pairs:
-                if (origin, dest) not in self.distance_cache:
-                    futures.append(
-                        executor.submit(self.calculate_single_distance, origin, dest)
-                    )
-            
-            for future in as_completed(futures):
-                origin, dest, result = future.result()
-                if result:
-                    self.distance_cache[(origin, dest)] = result
-    
-    def calculate_single_distance(self, origin, dest):
-        """Calculate real road distance between two points"""
-        try:
-            # Directions API kullanarak gerçek rota mesafesini al
-            result = self.gmaps.directions(
-                origin=f"{origin[0]},{origin[1]}",
-                destination=f"{dest[0]},{dest[1]}",
-                mode="driving",
-                alternatives=False  # Tek rota yeterli
-            )
-            
-            if result and len(result) > 0:
-                # Toplam mesafeyi metre->km çevir
-                distance = result[0]['legs'][0]['distance']['value'] / 1000
-                # Tahmini süreyi dakika olarak al
-                duration = result[0]['legs'][0]['duration']['value'] / 60
-                # Rota bilgisini de sakla
-                route_points = self._decode_polyline(result[0]['overview_polyline']['points'])
+    def get_distance(self, origin, dest):
+        """Get distance between two points"""
+        key = (tuple(origin), tuple(dest))
+        
+        # Check cache first
+        if key in self.distance_matrix:
+            return self.distance_matrix[key]
+        
+        # Try multiple times in case of timeout
+        for attempt in range(self.max_retries):
+            try:
+                # OSRM expects coordinates in format: longitude,latitude
+                url = f"{self.base_url}/route/v1/driving/{origin[1]},{origin[0]};{dest[1]},{dest[0]}"
+                params = {
+                    "overview": "false",  # Don't need the route geometry
+                    "alternatives": "false",
+                    "steps": "false"
+                }
                 
-                return origin, dest, (distance, duration, route_points)
+                response = requests.get(url, params=params, timeout=self.timeout)
+                data = response.json()
                 
-            return origin, dest, None
+                if response.status_code == 200 and data.get("code") == "Ok" and "routes" in data and len(data["routes"]) > 0:
+                    # Distance in kilometers
+                    distance = data["routes"][0]["distance"] / 1000
+                    self.distance_matrix[key] = distance
+                    
+                    # Also cache the reverse direction (usually similar)
+                    reverse_key = (tuple(dest), tuple(origin))
+                    self.distance_matrix[reverse_key] = distance
+                    
+                    # Periodically save cache
+                    if len(self.distance_matrix) % 10 == 0:
+                        self.save_cache()
+                    
+                    return distance
+                
+                print(f"Invalid response from OSRM (attempt {attempt + 1}/{self.max_retries}): {data}")
+                if attempt < self.max_retries - 1:
+                    time.sleep(1)  # Wait a bit before retrying
             
-        except Exception as e:
-            print(f"Error calculating distance: {e}")
-            return origin, dest, None
-
-    def _decode_polyline(self, polyline_str):
-        """Google Maps polyline'ı decode et"""
-        # Google Maps'in polyline kodlamasını çöz
-        # Bu rota üzerindeki gerçek yol noktalarını verir
-        return googlemaps.convert.decode_polyline(polyline_str)
+            except requests.Timeout:
+                print(f"Timeout error (attempt {attempt + 1}/{self.max_retries})")
+                if attempt < self.max_retries - 1:
+                    time.sleep(1)  # Wait a bit before retrying
+            except requests.RequestException as e:
+                print(f"Network error (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
+                if attempt < self.max_retries - 1:
+                    time.sleep(1)  # Wait a bit before retrying
+            except Exception as e:
+                print(f"Error calculating distance with OSRM: {str(e)}")
+                break
+        
+        return float('inf')
 
 def create_navigation_link(route, instance_data):
-    """Create Google Maps navigation link for the route"""
-    base_url = "https://www.google.com/maps/dir/"
+    """Create GraphHopper navigation link for the route"""
+    base_url = "https://graphhopper.com/maps/?"
     
     depot_coord = (
         instance_data[DEPART][COORDINATES][X_COORD],
         instance_data[DEPART][COORDINATES][Y_COORD]
     )
-    waypoints = [f"{depot_coord[0]},{depot_coord[1]}"]
+    
+    # GraphHopper format: point=lat,lon&point=lat,lon...
+    points = [f"point={depot_coord[0]},{depot_coord[1]}"]
     
     for sub_route in route:
         for customer_id in sub_route:
@@ -209,9 +226,16 @@ def create_navigation_link(route, instance_data):
                 customer[COORDINATES][X_COORD],
                 customer[COORDINATES][Y_COORD]
             )
-            waypoints.append(f"{coord[0]},{coord[1]}")
+            points.append(f"point={coord[0]},{coord[1]}")
     
-    waypoints.append(f"{depot_coord[0]},{depot_coord[1]}")
+    # Add depot as final point
+    points.append(f"point={depot_coord[0]},{depot_coord[1]}")
     
-    nav_url = base_url + '/'.join(waypoints)
+    # Add GraphHopper specific parameters
+    params = [
+        "profile=car",
+        "layer=OpenStreetMap"
+    ]
+    
+    nav_url = base_url + "&".join(points + params)
     return nav_url
