@@ -23,13 +23,14 @@ if __name__ == "__main__":
     routes = run_tabu_search(
         instance_name=instance_name,
         individual_size=num_customers,
-        pop_size=25,
+        pop_size=30,
         n_gen=300,
-        tabu_size=20,
+        tabu_size=25,
         plot=False,
-        stagnation_limit=30,
+        stagnation_limit=20,
         verbose=True,
-        use_real_distances=True
+        use_real_distances=True,
+        early_stop_limit=90
     )
     
     if routes:
