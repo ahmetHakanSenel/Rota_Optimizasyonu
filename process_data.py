@@ -120,11 +120,11 @@ class ProblemInstance:
 
 class OSRMHandler:
     def __init__(self):
-        self.base_url = "http://router.project-osrm.org"  
-        self.distance_matrix = {}  
-        self.timeout = 30 
-        self.max_retries = 3 
-        self._initialize_cache()  
+        self.base_url = "http://router.project-osrm.org"
+        self.distance_matrix = {}
+        self.timeout = 60
+        self.max_retries = 3
+        self._initialize_cache()
     
     def _initialize_cache(self):
         """Cache dosyasını yükleme"""
@@ -150,60 +150,98 @@ class OSRMHandler:
         except Exception as e:
             print(f"Error saving cache: {e}")
     
-    def get_distance(self, origin, dest):
-        """İki nokta arasındaki mesafeyi hesaplama"""
-        key = (tuple(origin), tuple(dest))  # Cache anahtarı
+    def precompute_distances(self, instance):
+        """Tüm mesafeleri OSRM table servisi ile tek seferde hesapla"""
+        print("\nPrecomputing all distances using OSRM table service...")
         
-
-        if key in self.distance_matrix:
-            return self.distance_matrix[key]
+        # Tüm noktaları topla
+        all_points = []
+        # Önce depo noktası
+        depot = (instance[DEPART][COORDINATES][X_COORD], 
+                instance[DEPART][COORDINATES][Y_COORD])
+        all_points.append(depot)
         
-
+        # Müşteri noktaları
+        customer_points = []
+        i = 1
+        while True:
+            customer_key = f'C_{i}'
+            if customer_key not in instance:
+                break
+            customer = instance[customer_key]
+            point = (customer[COORDINATES][X_COORD],
+                    customer[COORDINATES][Y_COORD])
+            customer_points.append(point)
+            all_points.append(point)
+            i += 1
+        
+        print(f"Found {len(customer_points)} customer points")
+        
+        # OSRM table servisi için koordinatları hazırla
+        coordinates = [f"{p[1]},{p[0]}" for p in all_points]  # OSRM lon,lat formatı
+        
+        # Table servisi için istek at
         for attempt in range(self.max_retries):
             try:
-
-                url = f"{self.base_url}/route/v1/driving/{origin[1]},{origin[0]};{dest[1]},{dest[0]}"
+                url = f"{self.base_url}/table/v1/driving/{';'.join(coordinates)}"
                 params = {
-                    "overview": "false",  
-                    "alternatives": "false",  
-                    "steps": "false" 
+                    "annotations": "distance",
+                    "sources": "all",
+                    "destinations": "all"
                 }
                 
+                print("Requesting distance matrix from OSRM...")
                 response = requests.get(url, params=params, timeout=self.timeout)
                 data = response.json()
                 
-
-                if response.status_code == 200 and data.get("code") == "Ok" and "routes" in data and len(data["routes"]) > 0:
-                    distance = data["routes"][0]["distance"] / 1000
-                    self.distance_matrix[key] = distance
+                if response.status_code == 200 and "distances" in data:
+                    print("Successfully received distance matrix")
                     
-
-                    reverse_key = (tuple(dest), tuple(origin))
-                    self.distance_matrix[reverse_key] = distance
+                    # Mesafe matrisini işle ve cache'le
+                    distances = data["distances"]
+                    for i, origin in enumerate(all_points):
+                        for j, dest in enumerate(all_points):
+                            if i != j:  # Aynı nokta değilse
+                                distance = distances[i][j] / 1000  # metre -> kilometre
+                                self.distance_matrix[(tuple(origin), tuple(dest))] = distance
                     
-
-                    if len(self.distance_matrix) % 10 == 0:
-                        self.save_cache()
-                    
-                    return distance
+                    print(f"Cached {len(self.distance_matrix)} distances")
+                    self.save_cache()
+                    return True
                 
-                print(f"Invalid response from OSRM (attempt {attempt + 1}/{self.max_retries}): {data}")
+                print(f"Invalid response from OSRM (attempt {attempt + 1}/{self.max_retries})")
                 if attempt < self.max_retries - 1:
-                    time.sleep(1)  
+                    time.sleep(2)  # Daha uzun bekleme süresi
             
             except requests.Timeout:
                 print(f"Timeout error (attempt {attempt + 1}/{self.max_retries})")
                 if attempt < self.max_retries - 1:
-                    time.sleep(1)
+                    time.sleep(2)
             except requests.RequestException as e:
                 print(f"Network error (attempt {attempt + 1}/{self.max_retries}): {str(e)}")
                 if attempt < self.max_retries - 1:
-                    time.sleep(1)
+                    time.sleep(2)
             except Exception as e:
-                print(f"Error calculating distance with OSRM: {str(e)}")
+                print(f"Error calculating distance matrix: {str(e)}")
                 break
         
-        return float('inf') 
+        print("Failed to compute distance matrix")
+        return False
+    
+    def get_distance(self, origin, dest):
+        """Cache'den mesafe getir"""
+        key = (tuple(origin), tuple(dest))
+        reverse_key = (tuple(dest), tuple(origin))
+        
+        # Önce direkt keyi kontrol et
+        if key in self.distance_matrix:
+            return self.distance_matrix[key]
+        # Sonra ters keyi kontrol et
+        if reverse_key in self.distance_matrix:
+            return self.distance_matrix[reverse_key]
+        
+        print(f"Warning: Distance not found in cache for {key}")
+        return float('inf')
 
 def create_navigation_link(route, instance_data):
     """GraphHopper navigasyon linki oluşturma"""
@@ -234,7 +272,7 @@ def create_navigation_link(route, instance_data):
 
     params = [
         "profile=car",  
-        "layer=OpenStreetMap"  
+        "layer=Omniscale"  
     ]
     
     # URL oluştur

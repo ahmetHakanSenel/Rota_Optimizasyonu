@@ -2,16 +2,25 @@ from core_funs import *
 import collections
 import random
 from process_data import OSRMHandler, ProblemInstance
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class AdaptiveTabuList:
     """Adaptif Tabu Listesi sınıfı"""
     def __init__(self, initial_size, max_size):
-        self.max_size = max_size  # Maksimum liste boyutu
-        self.list = collections.deque(maxlen=initial_size)  # Tabu listesi
-        self.frequency = {}  # Çözüm frekansları
-        self.current_size = initial_size  # Mevcut liste boyutu
-        self.best_known = float('inf')  # En iyi bilinen çözüm değeri
-        self.elite_solutions = []  # En iyi çözümlerin listesi
+        self.max_size = max_size 
+        self.list = collections.deque(maxlen=initial_size)
+        self.frequency = {}
+        self.current_size = initial_size
+        self.best_known = float('inf')  
+        self.elite_solutions = [] 
+        self.hash_cache = {}
+    
+    def _hash_solution(self, solution):
+        """Çözümü hızlı karşılaştırma için hashle"""
+        solution_tuple = tuple(solution)
+        if solution_tuple not in self.hash_cache:
+            self.hash_cache[solution_tuple] = hash(solution_tuple)
+        return self.hash_cache[solution_tuple]
     
     def add(self, solution):
         """Çözümü tabu listesine ekle"""
@@ -28,7 +37,7 @@ class AdaptiveTabuList:
         solution_tuple = tuple(solution)
         
         # Güçlü iyileştirme varsa her zaman kabul et
-        if aspiration_value is not None:
+        if aspiration_value is not None and current_best != float('inf'):
             improvement = (current_best - aspiration_value) / current_best * 100
             if improvement > 5:  # %5'den fazla iyileştirme
                 self.best_known = min(self.best_known, aspiration_value)
@@ -38,8 +47,8 @@ class AdaptiveTabuList:
         # Çözüm frekansına göre dinamik yasaklama
         freq = self.frequency.get(solution_tuple, 0)
         if freq > 0:
-            threshold = 0.95 - (0.05 * freq)  # Frekans arttıkça threshold düşer
-            threshold = max(0.7, threshold)  # Minimum threshold
+            threshold = 0.95 - (0.1 * freq)  # Frekans arttıkça threshold düşer
+            threshold = max(0.4, threshold)  # Minimum threshold
             
             # Son N çözümle benzerlik kontrolü
             recent_solutions = list(self.list)[-5:]
@@ -61,10 +70,29 @@ class AdaptiveTabuList:
             best_elite = min(self.elite_solutions, key=lambda x: x[1])
             self.best_known = best_elite[1]
 
+class DistanceCache:
+    def __init__(self):
+        self.cache = {}
+    
+    def get_distance(self, point1, point2, map_handler):
+        key = (tuple(point1), tuple(point2))
+        reverse_key = (tuple(point2), tuple(point1))
+        
+        if key in self.cache:
+            return self.cache[key]
+        if reverse_key in self.cache:
+            return self.cache[reverse_key]
+            
+        distance = map_handler.get_distance(point1, point2)
+        self.cache[key] = distance
+        return distance
+
 def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size, 
                     plot=False, stagnation_limit=20, verbose=True, 
                     use_real_distances=True, early_stop_limit=60):
     """Geliştirilmiş Tabu Arama algoritması"""
+    random.seed(42)
+    
     # Problem verilerini yükle
     problem_instance = ProblemInstance(instance_name)
     instance = problem_instance.get_data()
@@ -72,46 +100,50 @@ def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size,
     if instance is None:
         return None
     
-    # OSRM handler'ı başlat
+    print("Initializing OSRM handler and precomputing distances...")
     maps_handler = OSRMHandler()
+    if not maps_handler.precompute_distances(instance):
+        print("Failed to precompute distances. Exiting...")
+        return None
     
-    # Değişkenleri başlat
-    best_solution = None  # En iyi çözüm
+    best_solution = None  
     best_distance = float('inf')  # En iyi mesafe
     last_best_distance = float('inf')  # Son en iyi mesafe
     same_value_counter = 0  # Aynı değerde kalma sayacı
     no_improvement_counter = 0  # İyileştirme olmayan iterasyon sayacı
     
     # Başlangıç parametreleri
-    current_tabu_size = tabu_size  # Mevcut tabu listesi boyutu
-    current_max_neighbors = 15  # Mevcut maksimum komşu sayısı
-    current_stagnation_limit = stagnation_limit  # Mevcut durağanlık limiti
+    current_tabu_size = tabu_size
+    current_max_neighbors = 30  
+    current_stagnation_limit = stagnation_limit
     
     # Komşuluk yöntemleri ve ağırlıkları
     neighborhood_methods = {
-        "swap": 0.2,      # Basit değişimler
-        "insert": 0.2,    # Nokta taşıma
-        "reverse": 0.15,  # Segment çevirme
-        "scramble": 0.15, # Segment karıştırma
-        "block_move": 0.15, # Blok taşıma
-        "cross": 0.15     # Çapraz değişim
+        "swap": 0.3,       # Basit değişimlere daha fazla ağırlık
+        "insert": 0.2,     # Nokta taşımaya daha fazla ağırlık
+        "reverse": 0.2,    # Segment çevirme
+        "2-opt": 0.3      # 2-opt hareketi
     }
     
     # Tabu listesini başlat
     tabu_list = AdaptiveTabuList(current_tabu_size, current_tabu_size * 2)
     stagnation_counter = 0  # Durağanlık sayacı
     
-    # Başlangıç çözümünü oluştur
+    # Başlangıç çözümünü oluştur ve ilk en iyi çözüm olarak ata
     current_solution = create_initial_solution(instance, individual_size, maps_handler)
     current_distance = evaluate_solution_with_real_distances(current_solution, instance, maps_handler)
+    
+    # İlk çözümü en iyi çözüm olarak ata
+    best_solution = current_solution.copy()
+    best_distance = current_distance
+    
+    print(f"Initial solution distance: {best_distance:.2f} km")
     
     print("Starting Tabu Search optimization...")
     print(f"Parameters: generations={n_gen}, tabu_size={tabu_size}, "
           f"stagnation_limit={stagnation_limit}, early_stop_limit={early_stop_limit}")
     
-    # Durağanlık yönetimi için yeni değişkenler
-    stagnation_threshold = 0.1  # %0.1'lik değişim
-    last_improvements = []  # Son iyileştirmeleri takip et
+    no_improvement_streak = 0
     
     # Ana döngü
     for iteration in range(n_gen):
@@ -134,11 +166,9 @@ def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size,
             # Komşuluk ağırlıklarını güncelle
             if iteration > n_gen // 2:  # İkinci yarıda daha agresif ol
                 neighborhood_methods["reverse"] = 0.2
-                neighborhood_methods["scramble"] = 0.2
-                neighborhood_methods["block_move"] = 0.2
+                neighborhood_methods["2-opt"] = 0.2
                 neighborhood_methods["swap"] = 0.15
                 neighborhood_methods["insert"] = 0.15
-                neighborhood_methods["cross"] = 0.1
         
         print("Generating neighbors...")
         # Farklı komşuluk yöntemlerini ağırlıklarına göre kullan
@@ -166,36 +196,15 @@ def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size,
                 
                 # İyileştirme kontrolü
                 if best_neighbor_distance < best_distance:
-                    improvement = ((best_distance - best_neighbor_distance) / best_distance) * 100
-                    last_improvements.append(improvement)
-                    if len(last_improvements) > 10:
-                        last_improvements.pop(0)
-                        
-                    # Son iyileştirmelerin ortalaması threshold'dan küçükse
-                    if len(last_improvements) >= 5 and sum(last_improvements) / len(last_improvements) < stagnation_threshold:
-                        print("Quality improvement stagnation detected!")
-                        current_solution = diversify_solution(current_solution)
-                        stagnation_counter = 0
-                        last_improvements.clear()
-                    print(f"New best solution found! Improvement: {improvement:.2f}%")
-                    best_solution = best_neighbor.copy()
-                    best_distance = best_neighbor_distance
+                    print(f"New best solution found! Improvement: {((best_distance - best_neighbor_distance) / best_distance) * 100:.2f}%")
+                    best_solution = best_neighbor.copy()  # En iyi çözümü güncelle
+                    best_distance = best_neighbor_distance  # En iyi mesafeyi güncelle
                     stagnation_counter = 0
-                    no_improvement_counter = 0  # İyileştirme sayacını sıfırla
-                    
-                    # İyileştirme durumunda başarılı yönteme daha fazla ağırlık ver
-                    for method in neighborhood_methods:
-                        if method in str(best_neighbor):  # Basit kontrol
-                            neighborhood_methods[method] = min(0.3, neighborhood_methods[method] + 0.05)
-                            # Diğer ağırlıkları normalize et
-                            total = sum(neighborhood_methods.values())
-                            for m in neighborhood_methods:
-                                if m != method:
-                                    neighborhood_methods[m] *= (1 - neighborhood_methods[method]) / (total - neighborhood_methods[method])
+                    no_improvement_counter = 0
                 else:
                     print("No improvement in best solution")
                     stagnation_counter += 1
-                    no_improvement_counter += 1  # İyileştirme olmadığını say
+                    no_improvement_counter += 1
             else:
                 print("Best neighbor rejected (in tabu list)")
                 stagnation_counter += 1
@@ -205,7 +214,6 @@ def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size,
             stagnation_counter += 1
             no_improvement_counter += 1
         
-        # Aynı değerde kalma kontrolü
         if abs(best_distance - last_best_distance) < 0.01:
             same_value_counter += 1
             print(f"Solution unchanged for {same_value_counter} iterations")
@@ -213,10 +221,8 @@ def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size,
             same_value_counter = 0
             last_best_distance = best_distance
         
-        # Parametre ayarlama
         if same_value_counter >= 5:
             print("\nAdjusting parameters...")
-            # Parametreleri rastgele ayarla
             current_tabu_size = max(5, min(30, current_tabu_size + random.randint(-3, 5)))
             current_max_neighbors = max(10, min(30, current_max_neighbors + random.randint(-3, 5)))
             current_stagnation_limit = max(15, min(50, current_stagnation_limit + random.randint(-5, 8)))
@@ -225,13 +231,16 @@ def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size,
                   f"Max neighbors: {current_max_neighbors}, "
                   f"Stagnation limit: {current_stagnation_limit}")
             
-            # Tabu listesini yenile
             tabu_list = AdaptiveTabuList(current_tabu_size, current_tabu_size * 2)
             same_value_counter = 0
         
         print(f"\nCurrent best distance: {best_distance:.2f} km")
         print(f"Stagnation counter: {stagnation_counter}")
         print(f"No improvement counter: {no_improvement_counter}")
+        
+        if no_improvement_streak >= early_stop_limit // 2:
+            print("No significant improvement, stopping early...")
+            break
     
     if no_improvement_counter >= early_stop_limit:
         print("\nOptimization stopped early due to no improvement")
@@ -241,12 +250,19 @@ def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size,
     print(f"Final best distance: {best_distance:.2f} km")
     print(f"Final solution: {best_solution}")
     
-    return decode_solution(best_solution, instance) if best_solution else None
+    if best_solution is not None and best_distance != float('inf'):
+        return decode_solution(best_solution, instance)
+    else:
+        print("Warning: No valid solution found!")
+        return None
 
 def evaluate_solution_with_real_distances(solution, instance, map_handler):
     """Gerçek yol mesafelerini kullanarak çözümü değerlendir"""
-    total_distance = 0  # Toplam mesafe
-    previous_point = (  # Başlangıç noktası (depo)
+    if solution is None:
+        return float('inf')
+        
+    total_distance = 0
+    previous_point = (
         instance[DEPART][COORDINATES][X_COORD],
         instance[DEPART][COORDINATES][Y_COORD]
     )
@@ -254,29 +270,31 @@ def evaluate_solution_with_real_distances(solution, instance, map_handler):
     try:
         # Ardışık noktalar arası mesafeleri hesapla
         for customer_id in solution:
-            current_point = (  # Mevcut müşteri koordinatları
+            current_point = (
                 instance[f'C_{customer_id}'][COORDINATES][X_COORD],
                 instance[f'C_{customer_id}'][COORDINATES][Y_COORD]
             )
             
-            # OSRM'den mesafeyi al
             leg_distance = map_handler.get_distance(previous_point, current_point)
-            if leg_distance == float('inf'):  # Mesafe hesaplanamazsa
+            if leg_distance == float('inf'):
+                print(f"Warning: Could not calculate distance between {previous_point} and {current_point}")
                 return float('inf')
             
-            total_distance += leg_distance  # Toplam mesafeye ekle
-            previous_point = current_point  # Sonraki hesaplama için güncelle
+            total_distance += leg_distance
+            previous_point = current_point
         
-        # Depoya dönüş mesafesini ekle
-        depot_point = (  # Depo koordinatları
+        # Depoya dönüş
+        depot_point = (
             instance[DEPART][COORDINATES][X_COORD],
             instance[DEPART][COORDINATES][Y_COORD]
         )
-        final_leg = map_handler.get_distance(previous_point, depot_point)  # Son mesafe
-        if final_leg == float('inf'):  # Mesafe hesaplanamazsa
+        final_leg = map_handler.get_distance(previous_point, depot_point)
+        
+        if final_leg == float('inf'):
+            print(f"Warning: Could not calculate return distance to depot from {previous_point}")
             return float('inf')
         
-        total_distance += final_leg  # Toplam mesafeye ekle
+        total_distance += final_leg
         return total_distance
         
     except Exception as e:
@@ -284,48 +302,195 @@ def evaluate_solution_with_real_distances(solution, instance, map_handler):
         return float('inf')
 
 def create_initial_solution(instance, size, map_handler):
-    """Daha akıllı başlangıç çözümü oluşturma"""
+    """En yakın komşu ve 2-opt ile geliştirilmiş başlangıç çözümü"""
     print("\nCreating initial solution...")
     
-    # En yakın komşu sezgiseli ile başlangıç çözümü oluştur
-    solution = []
-    remaining = list(range(1, size + 1))
-    current = 0  # Depo noktası
+    # Depo koordinatları
+    depot = (
+        instance[DEPART][COORDINATES][X_COORD],
+        instance[DEPART][COORDINATES][Y_COORD]
+    )
     
-    while remaining:
-        # Mevcut noktaya en yakın müşteriyi bul
-        current_point = (
-            instance[DEPART][COORDINATES][X_COORD] if current == 0 
-            else instance[f'C_{current}'][COORDINATES][X_COORD],
-            instance[DEPART][COORDINATES][Y_COORD] if current == 0 
-            else instance[f'C_{current}'][COORDINATES][Y_COORD]
-        )
-        
+    # En yakın komşu algoritması ile çözüm oluştur
+    unvisited = list(range(1, size + 1))
+    solution = []
+    current_point = depot
+    
+    while unvisited:
+        # En yakın noktayı bul
         min_distance = float('inf')
-        next_customer = None
+        nearest = None
         
-        for customer in remaining:
+        for point_id in unvisited:
             next_point = (
-                instance[f'C_{customer}'][COORDINATES][X_COORD],
-                instance[f'C_{customer}'][COORDINATES][Y_COORD]
+                instance[f'C_{point_id}'][COORDINATES][X_COORD],
+                instance[f'C_{point_id}'][COORDINATES][Y_COORD]
             )
             distance = map_handler.get_distance(current_point, next_point)
             
             if distance < min_distance:
                 min_distance = distance
-                next_customer = customer
+                nearest = point_id
         
-        if next_customer:
-            solution.append(next_customer)
-            remaining.remove(next_customer)
-            current = next_customer
+        solution.append(nearest)
+        unvisited.remove(nearest)
+        
+        if nearest:
+            current_point = (
+                instance[f'C_{nearest}'][COORDINATES][X_COORD],
+                instance[f'C_{nearest}'][COORDINATES][Y_COORD]
+            )
     
-    print(f"Initial solution created: {solution}")
-    initial_distance = evaluate_solution_with_real_distances(solution, instance, map_handler)
+    # 2-opt ile iyileştir
+    improved = two_opt_improvement(solution, instance, map_handler)
+    
+    # 3-opt ile daha da iyileştir
+    final = three_opt_improvement(improved, instance, map_handler)
+    
+    print(f"Initial solution created: {final}")
+    initial_distance = evaluate_solution_with_real_distances(final, instance, map_handler)
     print(f"Initial solution distance: {initial_distance:.2f} km\n")
     
-    return solution
+    return final
+
+def two_opt_improvement(solution, instance, map_handler):
+    """2-opt algoritması ile çözümü iyileştir"""
+    improved = solution.copy()
+    best_distance = evaluate_solution_with_real_distances(improved, instance, map_handler)
+    improvement_found = True
+    
+    while improvement_found:
+        improvement_found = False
+        
+        for i in range(len(improved) - 1):
+            for j in range(i + 2, len(improved)):
+                # 2-opt değişimi yap
+                new_solution = improved[:i] + list(reversed(improved[i:j])) + improved[j:]
+                new_distance = evaluate_solution_with_real_distances(new_solution, instance, map_handler)
+                
+                # Eğer daha iyi bir çözüm bulunduysa güncelle
+                if new_distance < best_distance:
+                    improved = new_solution
+                    best_distance = new_distance
+                    improvement_found = True
+                    break
+            
+            if improvement_found:
+                break
+    
+    return improved
+
+def three_opt_improvement(solution, instance, map_handler):
+    """3-opt algoritması ile çözümü iyileştir"""
+    improved = solution.copy()
+    best_distance = evaluate_solution_with_real_distances(improved, instance, map_handler)
+    improvement_found = True
+    
+    while improvement_found:
+        improvement_found = False
+        size = len(improved)
+        
+        for i in range(size - 2):
+            for j in range(i + 1, size - 1):
+                for k in range(j + 1, size):
+                    # 3-opt'un tüm olası kombinasyonlarını dene
+                    new_solutions = [
+                        improved[:i] + improved[i:j][::-1] + improved[j:k][::-1] + improved[k:],
+                        improved[:i] + improved[i:j] + improved[j:k][::-1] + improved[k:],
+                        improved[:i] + improved[i:j][::-1] + improved[j:k] + improved[k:],
+                    ]
+                    
+                    for new_sol in new_solutions:
+                        new_distance = evaluate_solution_with_real_distances(new_sol, instance, map_handler)
+                        if new_distance < best_distance:
+                            improved = new_sol
+                            best_distance = new_distance
+                            improvement_found = True
+                            break
+                    
+                    if improvement_found:
+                        break
+                if improvement_found:
+                    break
+            if improvement_found:
+                break
+    
+    return improved
 
 def decode_solution(solution, instance):
     """Çözümü rota formatına dönüştür"""
     return [solution]  # Tek araçlı rota
+
+def evaluate_neighbors_parallel(neighbors, instance, map_handler, max_workers=4):
+    """Komşu çözümleri paralel olarak değerlendir"""
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Tüm komşuları aynı anda değerlendir
+        future_to_neighbor = {
+            executor.submit(evaluate_solution_with_real_distances, n, instance, map_handler): n 
+            for n in neighbors
+        }
+        
+        # Sonuçları topla
+        valid_neighbors = []
+        for future in as_completed(future_to_neighbor):
+            neighbor = future_to_neighbor[future]
+            try:
+                distance = future.result()
+                if distance != float('inf'):
+                    valid_neighbors.append((neighbor, distance))
+            except Exception as e:
+                print(f"Error evaluating neighbor: {e}")
+    
+    return valid_neighbors
+
+def generate_neighbors(solution, method="swap", num_neighbors=5):
+    """Geliştirilmiş komşuluk üretimi"""
+    neighbors = []
+    size = len(solution)
+    
+    if method == "swap":
+        # Sistematik değişimler
+        for i in range(size-1):
+            for j in range(i+1, min(i+5, size)):  # Yakın noktaları değiştir
+                neighbor = solution.copy()
+                neighbor[i], neighbor[j] = neighbor[j], neighbor[i]
+                neighbors.append(neighbor)
+    
+    elif method == "insert":
+        # Akıllı ekleme
+        for i in range(size):
+            value = solution[i]
+            # Yakın konumlara taşı
+            for j in range(max(0, i-4), min(size, i+5)):
+                if i != j:
+                    neighbor = solution.copy()
+                    neighbor.pop(i)
+                    neighbor.insert(j, value)
+                    neighbors.append(neighbor)
+    
+    elif method == "reverse":
+        # Segment çevirme
+        for i in range(size-2):
+            for length in range(2, min(6, size-i)):  # 2-5 uzunluğunda segmentler
+                neighbor = solution.copy()
+                neighbor[i:i+length] = reversed(neighbor[i:i+length])
+                neighbors.append(neighbor)
+    
+    elif method == "2-opt":
+        # 2-opt hareketi
+        for i in range(1, size-2):
+            for j in range(i+1, min(i+6, size-1)):
+                neighbor = solution.copy()
+                neighbor[i:j] = reversed(neighbor[i:j])
+                neighbors.append(neighbor)
+    
+    # Rastgele seç ama en az bir tane her türden al
+    if len(neighbors) > num_neighbors:
+        selected = random.sample(neighbors, num_neighbors-1)
+        selected.append(random.choice(neighbors))  # Ekstra şans
+        return selected
+    
+    return neighbors
+
+# Kullanımı
+distance_cache = DistanceCache()

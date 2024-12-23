@@ -5,24 +5,23 @@ import collections
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
-
 from deap import base, creator, tools # type: ignore
 from process_data import *
 
 
 def create_route_from_ind(individual, data):
     """Bireyi araç rotalarına dönüştürme"""
-    vehicle_capacity = data[VEHICLE_CAPACITY]  # Araç kapasitesi
-    route = []  # Tüm rotaları tutacak liste
-    sub_route = []  # Tek bir aracın rotası
-    vehicle_load = vehicle_capacity  # Mevcut araç yükü
+    vehicle_capacity = data[VEHICLE_CAPACITY]
+    route = [] 
+    sub_route = [] 
+    vehicle_load = vehicle_capacity  
     
     i = 0
     while i < len(individual):
-        current_customer = individual[i]  # Mevcut müşteri
-        current_demand = data[F'C_{current_customer}'][DEMAND]  # Müşterinin talebi
+        current_customer = individual[i]
+        current_demand = data[F'C_{current_customer}'][DEMAND]  
         
-        if vehicle_load >= current_demand:  # Araç kapasitesi yeterliyse
+        if vehicle_load >= current_demand: 
             if i + 1 < len(individual):  # Sonraki müşteri varsa
                 next_customer = individual[i + 1]  # Sonraki müşteri
                 next_demand = data[F'C_{next_customer}'][DEMAND]  # Sonraki müşterinin talebi
