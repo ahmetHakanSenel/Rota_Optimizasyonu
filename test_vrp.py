@@ -4,7 +4,7 @@ import sys
 
 if __name__ == "__main__":
     # Test parameters
-    instance_name = "istanbultest2"
+    instance_name = "istanbultest"
     num_customers = 20
     
     print("Loading problem instance...")
@@ -24,13 +24,13 @@ if __name__ == "__main__":
         instance_name=instance_name,
         individual_size=num_customers,
         pop_size=30,
-        n_gen=300,
+        n_gen=900,
         tabu_size=25,
         plot=False,
         stagnation_limit=20,
         verbose=True,
         use_real_distances=True,
-        early_stop_limit=90
+        early_stop_limit=150
     )
     
     if routes:

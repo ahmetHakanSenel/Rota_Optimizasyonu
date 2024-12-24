@@ -7,7 +7,7 @@ import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-
+# Sabit değişkenler
 X_COORD = 'x'  
 Y_COORD = 'y'  
 COORDINATES = 'coordinates'  
@@ -38,14 +38,11 @@ class ProblemInstance:
         return self._data
     
     def _load_problem_instance(self, problem_name, force_recalculate=False):
-        """Problem verilerini dosyadan yükleme"""
         cache_dir = os.path.join(BASE_DIR, 'cache')  
         os.makedirs(cache_dir, exist_ok=True) 
         cache_file = os.path.join(cache_dir, f'{problem_name}_distances.pkl') 
         
-        cust_num = 0  
         text_file = os.path.join(BASE_DIR, 'data', problem_name + '.txt')  
-        
         print(f"Looking for file: {text_file}")
         
         parsed_data = { 
@@ -64,7 +61,7 @@ class ProblemInstance:
                         continue
 
                     values = line.split()
-                    if len(values) == 0:
+                    if not values:
                         continue
 
                     if line_count == 1:  
@@ -74,40 +71,28 @@ class ProblemInstance:
                         parsed_data[VEHICLE_CAPACITY] = float(values[1])
                     elif len(values) >= 7:  
                         cust_id = int(values[0])
-                        comment = ' '.join(values[7:]) if len(values) > 7 else ''
-                        if cust_id == 0:  
-                            parsed_data[DEPART] = {
-                                COORDINATES: {
-                                    X_COORD: float(values[1]),
-                                    Y_COORD: float(values[2]),
-                                },
-                                DEMAND: float(values[3]),
-                                READY_TIME: float(values[4]),
-                                DUE_TIME: float(values[5]),
-                                SERVICE_TIME: float(values[6]),
-                                'comment': comment.strip('# ')
-                            }
-                        else:  
-                            parsed_data[f'C_{cust_id}'] = {
-                                COORDINATES: {
-                                    X_COORD: float(values[1]),
-                                    Y_COORD: float(values[2]),
-                                },
-                                DEMAND: float(values[3]),
-                                READY_TIME: float(values[4]),
-                                DUE_TIME: float(values[5]),
-                                SERVICE_TIME: float(values[6]),
-                                'comment': comment.strip('# ')
-                            }
-                            cust_num += 1
+                        customer_data = {
+                            COORDINATES: {
+                                X_COORD: float(values[1]),
+                                Y_COORD: float(values[2]),
+                            },
+                            DEMAND: float(values[3]),
+                            READY_TIME: float(values[4]),
+                            DUE_TIME: float(values[5]),
+                            SERVICE_TIME: float(values[6]),
+                            'comment': ' '.join(values[7:]).strip('# ') if len(values) > 7 else ''
+                        }
+                        
+                        if cust_id == 0:
+                            parsed_data[DEPART] = customer_data
+                        else:
+                            parsed_data[f'C_{cust_id}'] = customer_data
 
-            
             if not force_recalculate and os.path.exists(cache_file):
                 try:
                     with open(cache_file, 'rb') as f:
                         parsed_data[DISTANCE_MATRIX] = pickle.load(f)
                     print("Loaded distance matrix from cache")
-                    return parsed_data
                 except:
                     print("Failed to load cached distance matrix")
             
@@ -127,10 +112,10 @@ class OSRMHandler:
         self._initialize_cache()
     
     def _initialize_cache(self):
-        """Cache dosyasını yükleme"""
         cache_dir = os.path.join(BASE_DIR, 'cache')
         os.makedirs(cache_dir, exist_ok=True)
         cache_file = os.path.join(cache_dir, 'osrm_distance_matrix.pkl')
+        
         if os.path.exists(cache_file):
             try:
                 with open(cache_file, 'rb') as f:
@@ -141,7 +126,6 @@ class OSRMHandler:
                 self.distance_matrix = {}
     
     def save_cache(self):
-        """Cache'i kaydetme"""
         cache_file = os.path.join(BASE_DIR, 'cache', 'osrm_distance_matrix.pkl')
         try:
             with open(cache_file, 'wb') as f:
@@ -150,19 +134,26 @@ class OSRMHandler:
         except Exception as e:
             print(f"Error saving cache: {e}")
     
+    def get_distance(self, origin, dest):
+        key = (tuple(origin), tuple(dest))
+        reverse_key = (tuple(dest), tuple(origin))
+        
+        if key in self.distance_matrix:
+            return self.distance_matrix[key]
+        if reverse_key in self.distance_matrix:
+            return self.distance_matrix[reverse_key]
+        
+        print(f"Warning: Distance not found in cache for {key}")
+        return float('inf')
+    
     def precompute_distances(self, instance):
-        """Tüm mesafeleri OSRM table servisi ile tek seferde hesapla"""
         print("\nPrecomputing all distances using OSRM table service...")
         
-        # Tüm noktaları topla
         all_points = []
-        # Önce depo noktası
         depot = (instance[DEPART][COORDINATES][X_COORD], 
                 instance[DEPART][COORDINATES][Y_COORD])
         all_points.append(depot)
         
-        # Müşteri noktaları
-        customer_points = []
         i = 1
         while True:
             customer_key = f'C_{i}'
@@ -171,16 +162,12 @@ class OSRMHandler:
             customer = instance[customer_key]
             point = (customer[COORDINATES][X_COORD],
                     customer[COORDINATES][Y_COORD])
-            customer_points.append(point)
             all_points.append(point)
             i += 1
         
-        print(f"Found {len(customer_points)} customer points")
+        print(f"Found {len(all_points)-1} customer points")
+        coordinates = [f"{p[1]},{p[0]}" for p in all_points]
         
-        # OSRM table servisi için koordinatları hazırla
-        coordinates = [f"{p[1]},{p[0]}" for p in all_points]  # OSRM lon,lat formatı
-        
-        # Table servisi için istek at
         for attempt in range(self.max_retries):
             try:
                 url = f"{self.base_url}/table/v1/driving/{';'.join(coordinates)}"
@@ -197,12 +184,11 @@ class OSRMHandler:
                 if response.status_code == 200 and "distances" in data:
                     print("Successfully received distance matrix")
                     
-                    # Mesafe matrisini işle ve cache'le
                     distances = data["distances"]
                     for i, origin in enumerate(all_points):
                         for j, dest in enumerate(all_points):
-                            if i != j:  # Aynı nokta değilse
-                                distance = distances[i][j] / 1000  # metre -> kilometre
+                            if i != j:
+                                distance = distances[i][j] / 1000
                                 self.distance_matrix[(tuple(origin), tuple(dest))] = distance
                     
                     print(f"Cached {len(self.distance_matrix)} distances")
@@ -211,7 +197,7 @@ class OSRMHandler:
                 
                 print(f"Invalid response from OSRM (attempt {attempt + 1}/{self.max_retries})")
                 if attempt < self.max_retries - 1:
-                    time.sleep(2)  # Daha uzun bekleme süresi
+                    time.sleep(2)
             
             except requests.Timeout:
                 print(f"Timeout error (attempt {attempt + 1}/{self.max_retries})")
@@ -227,36 +213,17 @@ class OSRMHandler:
         
         print("Failed to compute distance matrix")
         return False
-    
-    def get_distance(self, origin, dest):
-        """Cache'den mesafe getir"""
-        key = (tuple(origin), tuple(dest))
-        reverse_key = (tuple(dest), tuple(origin))
-        
-        # Önce direkt keyi kontrol et
-        if key in self.distance_matrix:
-            return self.distance_matrix[key]
-        # Sonra ters keyi kontrol et
-        if reverse_key in self.distance_matrix:
-            return self.distance_matrix[reverse_key]
-        
-        print(f"Warning: Distance not found in cache for {key}")
-        return float('inf')
 
 def create_navigation_link(route, instance_data):
-    """GraphHopper navigasyon linki oluşturma"""
     base_url = "https://graphhopper.com/maps/?" 
     
-
     depot_coord = (
         instance_data[DEPART][COORDINATES][X_COORD],
         instance_data[DEPART][COORDINATES][Y_COORD]
     )
     
-
-    points = [f"point={depot_coord[0]},{depot_coord[1]}"] 
+    points = [f"point={depot_coord[0]},{depot_coord[1]}"]
     
-   
     for sub_route in route:
         for customer_id in sub_route:
             customer = instance_data[f'C_{customer_id}']
@@ -266,15 +233,11 @@ def create_navigation_link(route, instance_data):
             )
             points.append(f"point={coord[0]},{coord[1]}")
     
-
     points.append(f"point={depot_coord[0]},{depot_coord[1]}")
     
-
     params = [
-        "profile=car",  
-        "layer=Omniscale"  
+        "profile=car",
+        "layer=Omniscale"
     ]
     
-    # URL oluştur
-    nav_url = base_url + "&".join(points + params)
-    return nav_url
+    return base_url + "&".join(points + params)

@@ -7,85 +7,129 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 class AdaptiveTabuList:
     """Adaptif Tabu Listesi sınıfı"""
     def __init__(self, initial_size, max_size):
-        self.max_size = max_size 
+        self.max_size = max_size
         self.list = collections.deque(maxlen=initial_size)
         self.frequency = {}
         self.current_size = initial_size
-        self.best_known = float('inf')  
-        self.elite_solutions = [] 
-        self.hash_cache = {}
-    
-    def _hash_solution(self, solution):
-        """Çözümü hızlı karşılaştırma için hashle"""
-        solution_tuple = tuple(solution)
-        if solution_tuple not in self.hash_cache:
-            self.hash_cache[solution_tuple] = hash(solution_tuple)
-        return self.hash_cache[solution_tuple]
+        self.best_known = float('inf')
+        self.elite_solutions = []
     
     def add(self, solution):
-        """Çözümü tabu listesine ekle"""
-        solution_tuple = tuple(solution)  # Çözümü tuple'a çevir
-        self.list.append(solution_tuple)  # Listeye ekle
-        self.frequency[solution_tuple] = self.frequency.get(solution_tuple, 0) + 1  # Frekansı güncelle
+        solution_tuple = tuple(solution)
+        self.list.append(solution_tuple)
+        self.frequency[solution_tuple] = self.frequency.get(solution_tuple, 0) + 1
         
-        # Liste boyutunu güncelle
         if len(self.list) >= self.current_size:
             self.current_size = min(self.current_size + 1, self.max_size)
     
     def contains(self, solution, aspiration_value=None, current_best=float('inf')):
-        """Geliştirilmiş tabu kontrolü"""
         solution_tuple = tuple(solution)
         
-        # Güçlü iyileştirme varsa her zaman kabul et
         if aspiration_value is not None and current_best != float('inf'):
             improvement = (current_best - aspiration_value) / current_best * 100
-            if improvement > 5:  # %5'den fazla iyileştirme
+            if improvement > 5:
                 self.best_known = min(self.best_known, aspiration_value)
                 self.elite_solutions.append((solution_tuple, aspiration_value))
                 return False
         
-        # Çözüm frekansına göre dinamik yasaklama
         freq = self.frequency.get(solution_tuple, 0)
         if freq > 0:
-            threshold = 0.95 - (0.1 * freq)  # Frekans arttıkça threshold düşer
-            threshold = max(0.4, threshold)  # Minimum threshold
-            
-            # Son N çözümle benzerlik kontrolü
+            threshold = max(0.4, 0.95 - (0.1 * freq))
             recent_solutions = list(self.list)[-5:]
             for recent in recent_solutions:
-                similarity = sum(a == b for a, b in zip(solution_tuple, recent)) / len(solution_tuple)
-                if similarity > threshold:
+                if sum(a == b for a, b in zip(solution_tuple, recent)) / len(solution_tuple) > threshold:
                     return True
         
         return False
     
     def clear(self):
-        """Tabu listesini temizle ama elit çözümleri koru"""
-        self.list.clear()  # Listeyi temizle
-        self.frequency.clear()  # Frekansları sıfırla
-        self.current_size = len(self.list)  # Boyutu güncelle
+        self.list.clear()
+        self.frequency.clear()
+        self.current_size = len(self.list)
         
-        # En iyi çözümleri geri yükle
         if self.elite_solutions:
-            best_elite = min(self.elite_solutions, key=lambda x: x[1])
-            self.best_known = best_elite[1]
+            self.best_known = min(self.elite_solutions, key=lambda x: x[1])[1]
 
-class DistanceCache:
-    def __init__(self):
-        self.cache = {}
+def k_opt_improvement(solution, instance, map_handler, k=2):
+    """Birleştirilmiş k-opt iyileştirme"""
+    improved = solution.copy()
+    best_distance = evaluate_solution_with_real_distances(improved, instance, map_handler)
+    size = len(improved)
     
-    def get_distance(self, point1, point2, map_handler):
-        key = (tuple(point1), tuple(point2))
-        reverse_key = (tuple(point2), tuple(point1))
+    while True:
+        improvement_found = False
         
-        if key in self.cache:
-            return self.cache[key]
-        if reverse_key in self.cache:
-            return self.cache[reverse_key]
-            
-        distance = map_handler.get_distance(point1, point2)
-        self.cache[key] = distance
-        return distance
+        if k == 2:
+            for i in range(size - 1):
+                for j in range(i + 2, size):
+                    new_solution = improved[:i] + list(reversed(improved[i:j])) + improved[j:]
+                    new_distance = evaluate_solution_with_real_distances(new_solution, instance, map_handler)
+                    
+                    if new_distance < best_distance:
+                        improved = new_solution
+                        best_distance = new_distance
+                        improvement_found = True
+                        break
+        else:  # k == 3
+            for i in range(size - 2):
+                for j in range(i + 1, size - 1):
+                    for k in range(j + 1, size):
+                        combinations = [
+                            improved[:i] + improved[i:j][::-1] + improved[j:k][::-1] + improved[k:],
+                            improved[:i] + improved[i:j] + improved[j:k][::-1] + improved[k:],
+                            improved[:i] + improved[i:j][::-1] + improved[j:k] + improved[k:]
+                        ]
+                        
+                        for new_sol in combinations:
+                            new_distance = evaluate_solution_with_real_distances(new_sol, instance, map_handler)
+                            if new_distance < best_distance:
+                                improved = new_sol
+                                best_distance = new_distance
+                                improvement_found = True
+                                break
+        
+        if not improvement_found:
+            break
+    
+    return improved
+
+def create_initial_solution(instance, size, map_handler):
+    """Daha iyi başlangıç çözümü"""
+    # En yakın komşu + 2-opt + 3-opt yerine
+    # Çoklu başlangıç noktası ve en iyi seçim
+    best_solution = None
+    best_distance = float('inf')
+    
+    for start_point in range(1, min(6, size+1)):  # İlk 5 noktayı dene
+        solution = [start_point]
+        unvisited = set(range(1, size + 1)) - {start_point}
+        current_point = (
+            instance[f'C_{start_point}'][COORDINATES][X_COORD],
+            instance[f'C_{start_point}'][COORDINATES][Y_COORD]
+        )
+        
+        while unvisited:
+            next_point = min(unvisited, 
+                           key=lambda x: map_handler.get_distance(current_point, 
+                               (instance[f'C_{x}'][COORDINATES][X_COORD],
+                                instance[f'C_{x}'][COORDINATES][Y_COORD])))
+            solution.append(next_point)
+            unvisited.remove(next_point)
+            current_point = (
+                instance[f'C_{next_point}'][COORDINATES][X_COORD],
+                instance[f'C_{next_point}'][COORDINATES][Y_COORD]
+            )
+        
+        # İyileştirmeler
+        improved = k_opt_improvement(solution, instance, map_handler, k=2)
+        improved = k_opt_improvement(improved, instance, map_handler, k=3)
+        
+        distance = evaluate_solution_with_real_distances(improved, instance, map_handler)
+        if distance < best_distance:
+            best_solution = improved
+            best_distance = distance
+    
+    return best_solution
 
 def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size, 
                     plot=False, stagnation_limit=20, verbose=True, 
@@ -301,122 +345,6 @@ def evaluate_solution_with_real_distances(solution, instance, map_handler):
         print(f"Error calculating route: {str(e)}")
         return float('inf')
 
-def create_initial_solution(instance, size, map_handler):
-    """En yakın komşu ve 2-opt ile geliştirilmiş başlangıç çözümü"""
-    print("\nCreating initial solution...")
-    
-    # Depo koordinatları
-    depot = (
-        instance[DEPART][COORDINATES][X_COORD],
-        instance[DEPART][COORDINATES][Y_COORD]
-    )
-    
-    # En yakın komşu algoritması ile çözüm oluştur
-    unvisited = list(range(1, size + 1))
-    solution = []
-    current_point = depot
-    
-    while unvisited:
-        # En yakın noktayı bul
-        min_distance = float('inf')
-        nearest = None
-        
-        for point_id in unvisited:
-            next_point = (
-                instance[f'C_{point_id}'][COORDINATES][X_COORD],
-                instance[f'C_{point_id}'][COORDINATES][Y_COORD]
-            )
-            distance = map_handler.get_distance(current_point, next_point)
-            
-            if distance < min_distance:
-                min_distance = distance
-                nearest = point_id
-        
-        solution.append(nearest)
-        unvisited.remove(nearest)
-        
-        if nearest:
-            current_point = (
-                instance[f'C_{nearest}'][COORDINATES][X_COORD],
-                instance[f'C_{nearest}'][COORDINATES][Y_COORD]
-            )
-    
-    # 2-opt ile iyileştir
-    improved = two_opt_improvement(solution, instance, map_handler)
-    
-    # 3-opt ile daha da iyileştir
-    final = three_opt_improvement(improved, instance, map_handler)
-    
-    print(f"Initial solution created: {final}")
-    initial_distance = evaluate_solution_with_real_distances(final, instance, map_handler)
-    print(f"Initial solution distance: {initial_distance:.2f} km\n")
-    
-    return final
-
-def two_opt_improvement(solution, instance, map_handler):
-    """2-opt algoritması ile çözümü iyileştir"""
-    improved = solution.copy()
-    best_distance = evaluate_solution_with_real_distances(improved, instance, map_handler)
-    improvement_found = True
-    
-    while improvement_found:
-        improvement_found = False
-        
-        for i in range(len(improved) - 1):
-            for j in range(i + 2, len(improved)):
-                # 2-opt değişimi yap
-                new_solution = improved[:i] + list(reversed(improved[i:j])) + improved[j:]
-                new_distance = evaluate_solution_with_real_distances(new_solution, instance, map_handler)
-                
-                # Eğer daha iyi bir çözüm bulunduysa güncelle
-                if new_distance < best_distance:
-                    improved = new_solution
-                    best_distance = new_distance
-                    improvement_found = True
-                    break
-            
-            if improvement_found:
-                break
-    
-    return improved
-
-def three_opt_improvement(solution, instance, map_handler):
-    """3-opt algoritması ile çözümü iyileştir"""
-    improved = solution.copy()
-    best_distance = evaluate_solution_with_real_distances(improved, instance, map_handler)
-    improvement_found = True
-    
-    while improvement_found:
-        improvement_found = False
-        size = len(improved)
-        
-        for i in range(size - 2):
-            for j in range(i + 1, size - 1):
-                for k in range(j + 1, size):
-                    # 3-opt'un tüm olası kombinasyonlarını dene
-                    new_solutions = [
-                        improved[:i] + improved[i:j][::-1] + improved[j:k][::-1] + improved[k:],
-                        improved[:i] + improved[i:j] + improved[j:k][::-1] + improved[k:],
-                        improved[:i] + improved[i:j][::-1] + improved[j:k] + improved[k:],
-                    ]
-                    
-                    for new_sol in new_solutions:
-                        new_distance = evaluate_solution_with_real_distances(new_sol, instance, map_handler)
-                        if new_distance < best_distance:
-                            improved = new_sol
-                            best_distance = new_distance
-                            improvement_found = True
-                            break
-                    
-                    if improvement_found:
-                        break
-                if improvement_found:
-                    break
-            if improvement_found:
-                break
-    
-    return improved
-
 def decode_solution(solution, instance):
     """Çözümü rota formatına dönüştür"""
     return [solution]  # Tek araçlı rota
@@ -491,6 +419,3 @@ def generate_neighbors(solution, method="swap", num_neighbors=5):
         return selected
     
     return neighbors
-
-# Kullanımı
-distance_cache = DistanceCache()
