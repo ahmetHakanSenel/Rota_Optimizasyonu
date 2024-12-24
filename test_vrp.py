@@ -4,8 +4,8 @@ import sys
 
 if __name__ == "__main__":
     # Test parameters
-    instance_name = "istanbultest"
-    num_customers = 20
+    instance_name = "bursa"
+    num_customers = 15
     
     print("Loading problem instance...")
     try:
@@ -23,14 +23,14 @@ if __name__ == "__main__":
     routes = run_tabu_search(
         instance_name=instance_name,
         individual_size=num_customers,
-        pop_size=30,
-        n_gen=900,
-        tabu_size=25,
+        pop_size=100,
+        n_gen=1200,
+        tabu_size=45,
         plot=False,
-        stagnation_limit=20,
+        stagnation_limit=40,
         verbose=True,
         use_real_distances=True,
-        early_stop_limit=150
+        early_stop_limit=200
     )
     
     if routes:

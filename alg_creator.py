@@ -94,40 +94,81 @@ def k_opt_improvement(solution, instance, map_handler, k=2):
     return improved
 
 def create_initial_solution(instance, size, map_handler):
-    """Daha iyi başlangıç çözümü"""
-    # En yakın komşu + 2-opt + 3-opt yerine
-    # Çoklu başlangıç noktası ve en iyi seçim
+    """Geliştirilmiş başlangıç çözümü"""
     best_solution = None
     best_distance = float('inf')
     
-    for start_point in range(1, min(6, size+1)):  # İlk 5 noktayı dene
-        solution = [start_point]
-        unvisited = set(range(1, size + 1)) - {start_point}
-        current_point = (
-            instance[f'C_{start_point}'][COORDINATES][X_COORD],
-            instance[f'C_{start_point}'][COORDINATES][Y_COORD]
+    # Depo koordinatları
+    depot = (
+        instance[DEPART][COORDINATES][X_COORD],
+        instance[DEPART][COORDINATES][Y_COORD]
+    )
+    
+    # Önce tüm noktaların depoya olan uzaklıklarını hesapla
+    distances_to_depot = {}
+    for i in range(1, size + 1):
+        point = (
+            instance[f'C_{i}'][COORDINATES][X_COORD],
+            instance[f'C_{i}'][COORDINATES][Y_COORD]
         )
-        
-        while unvisited:
-            next_point = min(unvisited, 
-                           key=lambda x: map_handler.get_distance(current_point, 
-                               (instance[f'C_{x}'][COORDINATES][X_COORD],
-                                instance[f'C_{x}'][COORDINATES][Y_COORD])))
-            solution.append(next_point)
-            unvisited.remove(next_point)
+        dist = map_handler.get_distance(depot, point)
+        distances_to_depot[i] = dist
+    
+    # En yakın ve en uzak 3'er nokta + 2 rastgele nokta ile başla
+    closest_points = sorted(distances_to_depot.items(), key=lambda x: x[1])[:3]
+    farthest_points = sorted(distances_to_depot.items(), key=lambda x: x[1], reverse=True)[:3]
+    start_points = [p[0] for p in closest_points + farthest_points]
+    
+    # Rastgele 2 nokta ekle
+    remaining_points = set(range(1, size + 1)) - set(start_points)
+    if remaining_points:
+        start_points.extend(random.sample(list(remaining_points), min(2, len(remaining_points))))
+    
+    for start_point in start_points:
+        for strategy in ['nearest', 'balanced', 'farthest']:
+            solution = [start_point]
+            unvisited = set(range(1, size + 1)) - {start_point}
             current_point = (
-                instance[f'C_{next_point}'][COORDINATES][X_COORD],
-                instance[f'C_{next_point}'][COORDINATES][Y_COORD]
+                instance[f'C_{start_point}'][COORDINATES][X_COORD],
+                instance[f'C_{start_point}'][COORDINATES][Y_COORD]
             )
-        
-        # İyileştirmeler
-        improved = k_opt_improvement(solution, instance, map_handler, k=2)
-        improved = k_opt_improvement(improved, instance, map_handler, k=3)
-        
-        distance = evaluate_solution_with_real_distances(improved, instance, map_handler)
-        if distance < best_distance:
-            best_solution = improved
-            best_distance = distance
+            
+            while unvisited:
+                distances = {
+                    x: map_handler.get_distance(current_point, 
+                        (instance[f'C_{x}'][COORDINATES][X_COORD],
+                         instance[f'C_{x}'][COORDINATES][Y_COORD]))
+                    for x in unvisited
+                }
+                
+                # Strateji seçimi
+                if strategy == 'nearest':
+                    next_point = min(distances.items(), key=lambda x: x[1])[0]
+                elif strategy == 'farthest':
+                    valid_distances = {k:v for k,v in distances.items() if v != float('inf')}
+                    next_point = max(valid_distances.items(), key=lambda x: x[1])[0] if valid_distances else min(distances.items(), key=lambda x: x[1])[0]
+                else:  # balanced
+                    # Hem mesafe hem depoya uzaklığı dengele
+                    next_point = min(distances.items(), 
+                                   key=lambda x: x[1] + distances_to_depot[x[0]])[0]
+                
+                solution.append(next_point)
+                unvisited.remove(next_point)
+                current_point = (
+                    instance[f'C_{next_point}'][COORDINATES][X_COORD],
+                    instance[f'C_{next_point}'][COORDINATES][Y_COORD]
+                )
+            
+            # Daha agresif iyileştirme
+            improved = k_opt_improvement(solution, instance, map_handler, k=2)
+            improved = k_opt_improvement(improved, instance, map_handler, k=3)
+            improved = k_opt_improvement(improved, instance, map_handler, k=2)
+            
+            # Toplam mesafeyi hesapla
+            distance = evaluate_solution_with_real_distances(improved, instance, map_handler)
+            if distance < best_distance:
+                best_solution = improved
+                best_distance = distance
     
     return best_solution
 
@@ -209,9 +250,9 @@ def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size,
             
             # Komşuluk ağırlıklarını güncelle
             if iteration > n_gen // 2:  # İkinci yarıda daha agresif ol
-                neighborhood_methods["reverse"] = 0.2
+                neighborhood_methods["reverse"] = 0.15
                 neighborhood_methods["2-opt"] = 0.2
-                neighborhood_methods["swap"] = 0.15
+                neighborhood_methods["swap"] = 0.2
                 neighborhood_methods["insert"] = 0.15
         
         print("Generating neighbors...")

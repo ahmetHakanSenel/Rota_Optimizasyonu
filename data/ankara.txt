@@ -1,0 +1,24 @@
+ANKARA
+VEHICLE
+NUMBER     CAPACITY
+25         500
+
+CUSTOMER
+CUST NO.  XCOORD.    YCOORD.    DEMAND   READY TIME   DUE DATE   SERVICE TIME
+ 
+0         39.9334    32.8597    0        0            1000       0      # Kızılay (Depo)
+1         39.9207    32.8546    15       0            1000       10     # Ulus
+2         39.9477    32.8876    20       0            1000       10     # Çankaya
+3         39.9680    32.8473    25       0            1000       10     # Keçiören
+4         39.9738    32.8065    15       0            1000       10     # Yenimahalle
+5         39.9207    32.8629    20       0            1000       10     # Sıhhiye
+6         39.9019    32.8586    30       0            1000       10     # Dikmen
+7         39.9515    32.8580    25       0            1000       10     # Gaziosmanpaşa
+8         39.9191    32.8662    15       0            1000       10     # Kolej
+9         39.9776    32.7548    20       0            1000       10     # Batıkent
+10        39.9228    32.8361    25       0            1000       10     # Maltepe
+11        39.9650    32.8237    30       0            1000       10     # Demetevler
+12        39.8875    32.8538    15       0            1000       10     # Öveçler
+13        39.9738    32.7765    20       0            1000       10     # Ostim
+14        39.9397    32.8640    25       0            1000       10     # Kocatepe
+15        39.8981    32.8629    30       0            1000       10     # Ayrancı
