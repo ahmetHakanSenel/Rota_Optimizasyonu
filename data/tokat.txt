@@ -4,21 +4,21 @@ NUMBER     CAPACITY
 25         500
 
 CUSTOMER
-CUST NO.  XCOORD.    YCOORD.    DEMAND   READY TIME   DUE DATE   SERVICE TIME
+CUST NO.  XCOORD.    YCOORD.    DEMAND   # COMMENT
  
-0         40.3167    36.5500    0        0            1000       0      # Merkez (Depo)
-1         40.3139    36.5561    15       0            1000       10     # Karşıyaka
-2         40.3231    36.5447    20       0            1000       10     # Yeşilırmak
-3         40.3106    36.5583    25       0            1000       10     # Ali Paşa
-4         40.3194    36.5528    15       0            1000       10     # Gülbaharhatun
-5         40.3147    36.5475    20       0            1000       10     # Soğukpınar
-6         40.3083    36.5542    30       0            1000       10     # Kabe-i Mescit
-7         40.3219    36.5494    25       0            1000       10     # Devegörmez
-8         40.3175    36.5564    15       0            1000       10     # Yarahmet
-9         40.3128    36.5617    20       0            1000       10     # Mahmut Paşa
-10        40.3256    36.5511    25       0            1000       10     # Çay
-11        40.3092    36.5456    30       0            1000       10     # Erenler
-12        40.3203    36.5589    15       0            1000       10     # Beyhamam
-13        40.3161    36.5428    20       0            1000       10     # Gaziosmanpaşa
-14        40.3114    36.5508    25       0            1000       10     # Sulu Sokak
-15        40.3189    36.5467    30       0            1000       10     # Büyük Beybağı
+0         40.3167    36.5500    0        # Merkez (Depo)
+1         40.3139    36.5561    15       # Karşıyaka
+2         40.3231    36.5447    20       # Yeşilırmak
+3         40.3106    36.5583    25       # Ali Paşa
+4         40.3194    36.5528    15       # Gülbaharhatun
+5         40.3147    36.5475    20       # Soğukpınar
+6         40.3083    36.5542    30       # Kabe-i Mescit
+7         40.3219    36.5494    25       # Devegörmez
+8         40.3175    36.5564    15       # Yarahmet
+9         40.3128    36.5617    20       # Mahmut Paşa
+10        40.3256    36.5511    25       # Çay
+11        40.3092    36.5456    30       # Erenler
+12        40.3203    36.5589    15       # Beyhamam
+13        40.3161    36.5428    20       # Gaziosmanpaşa
+14        40.3114    36.5508    25       # Sulu Sokak
+15        40.3189    36.5467    30       # Büyük Beybağı

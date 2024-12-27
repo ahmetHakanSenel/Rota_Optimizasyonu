@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VRP Route Optimization</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <style>
+        body {
+            background-color: #212529;
+            color: #e9ecef;
+        }
+        
+        #map {
+            height: 600px;
+            width: 100%;
+            border-radius: 8px;
+            border: 1px solid #495057;
+        }
+        
+        .control-panel {
+            background-color: #343a40;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #495057;
+        }
+        
+        .route-info {
+            margin-top: 20px;
+        }
+        
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(33, 37, 41, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            display: none;
+        }
+        
+        .route-details {
+            background-color: #343a40;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border: 1px solid #495057;
+        }
+        
+        .route-stop {
+            padding: 8px;
+            margin: 5px 0;
+            background-color: #212529;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        
+        .depot-marker {
+            background-color: #dc3545;
+            border: 2px solid white;
+            border-radius: 50%;
+            width: 32px !important;
+            height: 32px !important;
+            margin-left: -16px !important;
+            margin-top: -16px !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .customer-marker {
+            background-color: #0d6efd;
+            border: 2px solid white;
+            border-radius: 50%;
+            width: 24px !important;
+            height: 24px !important;
+            margin-left: -12px !important;
+            margin-top: -12px !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="mb-4">VRP Route Optimization</h1>
+        
+        <div class="row">
+            <div class="col-md-4">
+                <div class="control-panel">
+                    <form id="optimizeForm">
+                        <div class="mb-3">
+                            <label for="instanceSelect" class="form-label">Select Instance</label>
+                            <select class="form-select" id="instanceSelect" required>
+                                <!-- Will be populated dynamically -->
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="numCustomers" class="form-label">Number of Customers</label>
+                            <input type="number" class="form-control" id="numCustomers" value="15" min="5" max="25" required>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary" id="optimizeBtn">
+                            Optimize Route
+                        </button>
+                    </form>
+                    
+                    <div class="route-info">
+                        <h5>Route Information</h5>
+                        <div id="routeInfo">
+                            <!-- Will be populated with route details -->
+                        </div>
+                        <div id="routeDetails">
+                            <!-- Will be populated with detailed route information -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-8 position-relative">
+                <div class="loading-overlay">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // City coordinates
+        const cityCoordinates = {
+            'bursa': {lat: 40.1885, lng: 29.0610, zoom: 12},
+            'istanbul': {lat: 41.0082, lng: 28.9784, zoom: 11},
+            'izmir': {lat: 38.4192, lng: 27.1287, zoom: 12},
+            'ankara': {lat: 39.9334, lng: 32.8597, zoom: 12},
+            'tokat': {lat: 40.3167, lng: 36.5500, zoom: 13}
+        };
+
+        // Initialize map with Turkey view
+        const map = L.map('map').setView([39.0, 35.0], 6);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let currentRouteLayer = null;
+        let lastSelectedCity = null;
+        const loadingOverlay = document.querySelector('.loading-overlay');
+
+        // Function to get route between two points using OSRM
+        async function getRoutePoints(start, end) {
+            const response = await fetch(
+                `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`
+            );
+            const data = await response.json();
+            
+            if (data.code !== 'Ok' || !data.routes || !data.routes[0]) {
+                throw new Error('Failed to get route');
+            }
+            
+            return {
+                points: data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]),
+                distance: data.routes[0].distance / 1000, // Convert to kilometers
+                duration: Math.round(data.routes[0].duration / 60) // Convert to minutes
+            };
+        }
+
+        // Clear previous route data
+        function clearRouteData() {
+            if (currentRouteLayer) {
+                map.removeLayer(currentRouteLayer);
+                currentRouteLayer = null;
+            }
+            document.getElementById('routeInfo').innerHTML = '';
+            document.getElementById('routeDetails').innerHTML = '';
+        }
+
+        // Load available instances
+        fetch('/api/instances')
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('instanceSelect');
+                data.instances.forEach(instance => {
+                    const option = document.createElement('option');
+                    option.value = instance;
+                    option.textContent = instance.charAt(0).toUpperCase() + instance.slice(1);
+                    select.appendChild(option);
+                });
+            });
+
+        // Handle form submission
+        document.getElementById('optimizeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const optimizeBtn = document.getElementById('optimizeBtn');
+            const selectedCity = document.getElementById('instanceSelect').value.toLowerCase();
+            
+            // Clear previous data
+            clearRouteData();
+            
+            optimizeBtn.disabled = true;
+            optimizeBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Optimizing...';
+            loadingOverlay.style.display = 'flex';
+            
+            try {
+                const response = await fetch('/api/optimize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        instance_name: selectedCity,
+                        num_customers: parseInt(document.getElementById('numCustomers').value)
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+
+                // Update map view for selected city
+                if (cityCoordinates[selectedCity]) {
+                    map.setView(
+                        [cityCoordinates[selectedCity].lat, cityCoordinates[selectedCity].lng],
+                        cityCoordinates[selectedCity].zoom
+                    );
+                    lastSelectedCity = selectedCity;
+                }
+                
+                // Draw new route
+                const routeLayer = L.featureGroup();
+                let totalDistance = 0;
+                let totalDuration = 0;
+                const routeDetailsHTML = [];
+                
+                for (const [routeIndex, route] of data.routes.entries()) {
+                    const routeColor = `hsl(${routeIndex * 137.508}deg 50% 50%)`;
+                    let routeDistance = 0;
+                    let routeDuration = 0;
+                    const stops = [];
+                    
+                    // Add markers with numbers
+                    route.forEach((point, index) => {
+                        const isDepot = index === 0 || index === route.length - 1;
+                        const markerNumber = isDepot ? 'D' : index;
+                        const marker = L.marker([point.lat, point.lng], {
+                            icon: L.divIcon({
+                                className: isDepot ? 'depot-marker' : 'customer-marker',
+                                html: `${markerNumber}`
+                            })
+                        }).bindPopup(`
+                            <strong>${point.name}</strong><br>
+                            Stop #${index + 1}
+                        `);
+                        
+                        marker.addTo(routeLayer);
+                        stops.push(`<div class="route-stop">
+                            <strong>${index + 1}.</strong> ${point.name}
+                        </div>`);
+                    });
+                    
+                    // Draw actual road routes between consecutive points
+                    for (let i = 0; i < route.length - 1; i++) {
+                        try {
+                            const routeData = await getRoutePoints(route[i], route[i + 1]);
+                            L.polyline(routeData.points, {
+                                color: routeColor,
+                                weight: 3,
+                                opacity: 0.8
+                            }).addTo(routeLayer);
+                            
+                            routeDistance += routeData.distance;
+                            routeDuration += routeData.duration;
+                            
+                        } catch (error) {
+                            console.error('Failed to get route segment:', error);
+                            L.polyline([[route[i].lat, route[i].lng], [route[i + 1].lat, route[i + 1].lng]], {
+                                color: routeColor,
+                                weight: 3,
+                                opacity: 0.8,
+                                dashArray: '5, 10'
+                            }).addTo(routeLayer);
+                        }
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                    }
+                    
+                    totalDistance += routeDistance;
+                    totalDuration += routeDuration;
+                    
+                    routeDetailsHTML.push(`
+                        <div class="route-details">
+                            <h6>Route ${routeIndex + 1}</h6>
+                            <p>
+                                Distance: ${routeDistance.toFixed(1)} km<br>
+                                Estimated Time: ${Math.floor(routeDuration / 60)}h ${Math.round(routeDuration % 60)}m<br>
+                                Vehicle Load: ${route.reduce((sum, point) => sum + (point.demand || 0), 0)} / ${data.vehicle_capacity}
+                            </p>
+                            <div class="route-stops">
+                                ${stops.join('')}
+                            </div>
+                        </div>
+                    `);
+                }
+                
+                routeLayer.addTo(map);
+                currentRouteLayer = routeLayer;
+                
+                // Fit map to route bounds
+                map.fitBounds(routeLayer.getBounds(), {padding: [50, 50]});
+                
+                // Update route info
+                const routeInfo = document.getElementById('routeInfo');
+                routeInfo.innerHTML = `
+                    <div class="route-details">
+                        <h6>Summary</h6>
+                        <p>
+                            Total Routes (Vehicles): ${data.routes.length}<br>
+                            Total Stops: ${data.routes.reduce((sum, route) => sum + route.length - 2, 0)}<br>
+                            Total Distance: ${totalDistance.toFixed(1)} km<br>
+                            Total Time: ${Math.floor(totalDuration / 60)}h ${Math.round(totalDuration % 60)}m<br>
+                            Vehicle Capacity: ${data.vehicle_capacity}
+                        </p>
+                    </div>
+                `;
+                
+                // Update route details
+                const routeDetails = document.getElementById('routeDetails');
+                routeDetails.innerHTML = routeDetailsHTML.join('');
+                
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                optimizeBtn.disabled = false;
+                optimizeBtn.textContent = 'Optimize Route';
+                loadingOverlay.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html> 

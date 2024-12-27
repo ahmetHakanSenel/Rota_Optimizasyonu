@@ -16,14 +16,12 @@ MAX_VEHICLE_NUMBER = 'max_vehicle_number'
 VEHICLE_CAPACITY = 'vehicle_capacity' 
 DEPART = 'depart' 
 DEMAND = 'demand' 
-READY_TIME = 'ready_time' 
-DUE_TIME = 'due_time'  
-SERVICE_TIME = 'service_time'  
 DISTANCE_MATRIX = 'distance_matrix' 
 
 class ProblemInstance:
     _instance = None 
-    _data = None 
+    _data = None
+    _current_instance = None
     
     def __new__(cls, problem_name=None, force_recalculate=False):
         if cls._instance is None:
@@ -31,11 +29,20 @@ class ProblemInstance:
         return cls._instance
     
     def __init__(self, problem_name=None, force_recalculate=False):
+        if (problem_name != self._current_instance) or force_recalculate:
+            self._data = None
+            self._current_instance = problem_name
+        
         if self._data is None and problem_name:
+            print(f"Loading new instance: {problem_name}")
             self._data = self._load_problem_instance(problem_name, force_recalculate)
     
     def get_data(self):
         return self._data
+    
+    def clear_data(self):
+        self._data = None
+        self._current_instance = None
     
     def _load_problem_instance(self, problem_name, force_recalculate=False):
         cache_dir = os.path.join(BASE_DIR, 'cache')  
@@ -77,9 +84,6 @@ class ProblemInstance:
                                 Y_COORD: float(values[2]),
                             },
                             DEMAND: float(values[3]),
-                            READY_TIME: float(values[4]),
-                            DUE_TIME: float(values[5]),
-                            SERVICE_TIME: float(values[6]),
                             'comment': ' '.join(values[7:]).strip('# ') if len(values) > 7 else ''
                         }
                         

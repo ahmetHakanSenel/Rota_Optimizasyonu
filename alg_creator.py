@@ -172,9 +172,18 @@ def create_initial_solution(instance, size, map_handler):
     
     return best_solution
 
-def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size, 
-                    plot=False, stagnation_limit=20, verbose=True, 
-                    use_real_distances=True, early_stop_limit=60):
+def run_tabu_search(
+    instance_name,
+    individual_size,
+    pop_size,
+    n_gen,
+    tabu_size,
+    plot=False,
+    stagnation_limit=20,
+    verbose=True,
+    use_real_distances=True,
+    early_stop_limit=60
+):
     """Geliştirilmiş Tabu Arama algoritması"""
     random.seed(42)
     
@@ -190,156 +199,147 @@ def run_tabu_search(instance_name, individual_size, pop_size, n_gen, tabu_size,
     if not maps_handler.precompute_distances(instance):
         print("Failed to precompute distances. Exiting...")
         return None
+
+    vehicle_capacity = float(instance.get('vehicle_capacity', 500))
+    customers = [(i, float(instance[f'C_{i}']['demand'])) for i in range(1, individual_size + 1)]
     
-    best_solution = None  
-    best_distance = float('inf')  # En iyi mesafe
-    last_best_distance = float('inf')  # Son en iyi mesafe
-    same_value_counter = 0  # Aynı değerde kalma sayacı
-    no_improvement_counter = 0  # İyileştirme olmayan iterasyon sayacı
+    def split_into_routes(solution):
+        """Çözümü araç kapasitesine göre rotalara böl"""
+        routes = []
+        current_route = []
+        current_load = 0
+        
+        for customer_id in solution:
+            customer_demand = next(demand for cid, demand in customers if cid == customer_id)
+            
+            if current_load + customer_demand > vehicle_capacity:
+                if current_route:  # Mevcut rotayı ekle
+                    routes.append(current_route)
+                current_route = [customer_id]
+                current_load = customer_demand
+            else:
+                current_route.append(customer_id)
+                current_load += customer_demand
+        
+        if current_route:  # Son rotayı ekle
+            routes.append(current_route)
+        
+        return routes
+
+    def calculate_total_distance(routes):
+        """Tüm rotaların toplam mesafesini hesapla"""
+        total_distance = 0
+        for route in routes:
+            prev_point = (
+                instance['depart']['coordinates']['x'],
+                instance['depart']['coordinates']['y']
+            )
+            
+            for customer_id in route:
+                current_point = (
+                    instance[f'C_{customer_id}']['coordinates']['x'],
+                    instance[f'C_{customer_id}']['coordinates']['y']
+                )
+                total_distance += maps_handler.get_distance(prev_point, current_point)
+                prev_point = current_point
+            
+            # Depoya dönüş
+            depot_point = (
+                instance['depart']['coordinates']['x'],
+                instance['depart']['coordinates']['y']
+            )
+            total_distance += maps_handler.get_distance(prev_point, depot_point)
+        
+        return total_distance
+
+    def evaluate_solution(solution):
+        """Çözümü değerlendir - araç sayısı ve mesafe optimizasyonu"""
+        routes = split_into_routes(solution)
+        num_vehicles = len(routes)
+        total_distance = calculate_total_distance(routes)
+        
+        # Araç sayısı ve mesafe için ağırlıklı değerlendirme
+        # Araç sayısını minimize etmek öncelikli
+        return num_vehicles * 10000 + total_distance
+
+    best_solution = None
+    best_fitness = float('inf')
+    current_solution = list(range(1, individual_size + 1))
+    random.shuffle(current_solution)
     
-    # Başlangıç parametreleri
-    current_tabu_size = tabu_size
-    current_max_neighbors = 30  
-    current_stagnation_limit = stagnation_limit
+    tabu_list = AdaptiveTabuList(tabu_size, tabu_size * 2)
+    stagnation_counter = 0
+    no_improvement_counter = 0
     
-    # Komşuluk yöntemleri ve ağırlıkları
-    neighborhood_methods = {
-        "swap": 0.3,       # Basit değişimlere daha fazla ağırlık
-        "insert": 0.2,     # Nokta taşımaya daha fazla ağırlık
-        "reverse": 0.2,    # Segment çevirme
-        "2-opt": 0.3      # 2-opt hareketi
-    }
-    
-    # Tabu listesini başlat
-    tabu_list = AdaptiveTabuList(current_tabu_size, current_tabu_size * 2)
-    stagnation_counter = 0  # Durağanlık sayacı
-    
-    # Başlangıç çözümünü oluştur ve ilk en iyi çözüm olarak ata
-    current_solution = create_initial_solution(instance, individual_size, maps_handler)
-    current_distance = evaluate_solution_with_real_distances(current_solution, instance, maps_handler)
-    
-    # İlk çözümü en iyi çözüm olarak ata
-    best_solution = current_solution.copy()
-    best_distance = current_distance
-    
-    print(f"Initial solution distance: {best_distance:.2f} km")
-    
-    print("Starting Tabu Search optimization...")
-    print(f"Parameters: generations={n_gen}, tabu_size={tabu_size}, "
-          f"stagnation_limit={stagnation_limit}, early_stop_limit={early_stop_limit}")
-    
-    no_improvement_streak = 0
-    
-    # Ana döngü
+    print("\nStarting optimization...")
     for iteration in range(n_gen):
-        print(f"\nIteration {iteration}:")
+        if verbose and iteration % 100 == 0:
+            print(f"\nIteration {iteration}:")
         
         # Early stopping kontrolü
         if no_improvement_counter >= early_stop_limit:
             print(f"\nEarly stopping! No improvement for {early_stop_limit} iterations.")
             break
         
-        # Durağanlık kontrolü
-        if stagnation_counter >= current_stagnation_limit:
-            print("Stagnation detected! Diversifying solution...")
+        # Komşu çözümler üret
+        neighbors = generate_neighbors(current_solution, method="swap", num_neighbors=20)
+        neighbors.extend(generate_neighbors(current_solution, method="2-opt", num_neighbors=20))
+        
+        # En iyi komşuyu bul
+        best_neighbor = None
+        best_neighbor_fitness = float('inf')
+        
+        for neighbor in neighbors:
+            if not tabu_list.contains(neighbor):
+                fitness = evaluate_solution(neighbor)
+                if fitness < best_neighbor_fitness:
+                    best_neighbor = neighbor
+                    best_neighbor_fitness = fitness
+        
+        if best_neighbor is None:
+            # Çeşitlilik ekle
             current_solution = diversify_solution(current_solution)
-            current_distance = evaluate_solution_with_real_distances(current_solution, instance, maps_handler)
-            print(f"New diversified solution distance: {current_distance:.2f} km")
+            stagnation_counter += 1
+            continue
+        
+        # Çözümü güncelle
+        current_solution = best_neighbor
+        current_fitness = best_neighbor_fitness
+        
+        # En iyi çözümü güncelle
+        if current_fitness < best_fitness:
+            best_solution = current_solution.copy()
+            best_fitness = current_fitness
             stagnation_counter = 0
-            tabu_list.clear()
-            
-            # Komşuluk ağırlıklarını güncelle
-            if iteration > n_gen // 2:  # İkinci yarıda daha agresif ol
-                neighborhood_methods["reverse"] = 0.15
-                neighborhood_methods["2-opt"] = 0.2
-                neighborhood_methods["swap"] = 0.2
-                neighborhood_methods["insert"] = 0.15
-        
-        print("Generating neighbors...")
-        # Farklı komşuluk yöntemlerini ağırlıklarına göre kullan
-        neighbors = []
-        for method, weight in neighborhood_methods.items():
-            num_neighbors = max(1, int(current_max_neighbors * weight))
-            neighbors.extend(generate_neighbors(current_solution, method=method, num_neighbors=num_neighbors))
-        print(f"Generated {len(neighbors)} neighbors")
-        
-        # Komşuları paralel olarak değerlendir
-        print("Evaluating neighbors in parallel...")
-        neighbor_distances = evaluate_neighbors_parallel(neighbors, instance, maps_handler)
-        print(f"Found {len(neighbor_distances)} valid neighbors")
-        
-        if neighbor_distances:  # Geçerli komşular bulunduysa
-            best_neighbor, best_neighbor_distance = min(neighbor_distances, key=lambda x: x[1])
-            print(f"Best neighbor distance: {best_neighbor_distance:.2f} km")
-            
-            # Tabu kontrolü
-            if not tabu_list.contains(best_neighbor, best_neighbor_distance, best_distance):
-                print("Best neighbor accepted (not in tabu list)")
-                current_solution = best_neighbor
-                current_distance = best_neighbor_distance
-                tabu_list.add(current_solution)
-                
-                # İyileştirme kontrolü
-                if best_neighbor_distance < best_distance:
-                    print(f"New best solution found! Improvement: {((best_distance - best_neighbor_distance) / best_distance) * 100:.2f}%")
-                    best_solution = best_neighbor.copy()  # En iyi çözümü güncelle
-                    best_distance = best_neighbor_distance  # En iyi mesafeyi güncelle
-                    stagnation_counter = 0
-                    no_improvement_counter = 0
-                else:
-                    print("No improvement in best solution")
-                    stagnation_counter += 1
-                    no_improvement_counter += 1
-            else:
-                print("Best neighbor rejected (in tabu list)")
-                stagnation_counter += 1
-                no_improvement_counter += 1
+            no_improvement_counter = 0
+            if verbose:
+                routes = split_into_routes(best_solution)
+                print(f"New best solution found!")
+                print(f"Number of vehicles: {len(routes)}")
+                print(f"Total distance: {calculate_total_distance(routes):.2f} km")
         else:
-            print("No valid neighbors found")
             stagnation_counter += 1
             no_improvement_counter += 1
         
-        if abs(best_distance - last_best_distance) < 0.01:
-            same_value_counter += 1
-            print(f"Solution unchanged for {same_value_counter} iterations")
-        else:
-            same_value_counter = 0
-            last_best_distance = best_distance
+        # Tabu listesini güncelle
+        tabu_list.add(current_solution)
         
-        if same_value_counter >= 5:
-            print("\nAdjusting parameters...")
-            current_tabu_size = max(5, min(30, current_tabu_size + random.randint(-3, 5)))
-            current_max_neighbors = max(10, min(30, current_max_neighbors + random.randint(-3, 5)))
-            current_stagnation_limit = max(15, min(50, current_stagnation_limit + random.randint(-5, 8)))
-            
-            print(f"New parameters - Tabu size: {current_tabu_size}, "
-                  f"Max neighbors: {current_max_neighbors}, "
-                  f"Stagnation limit: {current_stagnation_limit}")
-            
-            tabu_list = AdaptiveTabuList(current_tabu_size, current_tabu_size * 2)
-            same_value_counter = 0
-        
-        print(f"\nCurrent best distance: {best_distance:.2f} km")
-        print(f"Stagnation counter: {stagnation_counter}")
-        print(f"No improvement counter: {no_improvement_counter}")
-        
-        if no_improvement_streak >= early_stop_limit // 2:
-            print("No significant improvement, stopping early...")
-            break
+        # Durağanlık kontrolü
+        if stagnation_counter >= stagnation_limit:
+            print("Stagnation detected! Diversifying solution...")
+            current_solution = diversify_solution(current_solution)
+            stagnation_counter = 0
     
-    if no_improvement_counter >= early_stop_limit:
-        print("\nOptimization stopped early due to no improvement")
-    else:
-        print("\nOptimization completed!")
-        
-    print(f"Final best distance: {best_distance:.2f} km")
-    print(f"Final solution: {best_solution}")
-    
-    if best_solution is not None and best_distance != float('inf'):
-        return decode_solution(best_solution, instance)
-    else:
-        print("Warning: No valid solution found!")
+    if best_solution is None:
         return None
+    
+    # En iyi çözümü rotalara böl
+    final_routes = split_into_routes(best_solution)
+    print("\nFinal Solution:")
+    print(f"Number of vehicles: {len(final_routes)}")
+    print(f"Total distance: {calculate_total_distance(final_routes):.2f} km")
+    
+    return final_routes
 
 def evaluate_solution_with_real_distances(solution, instance, map_handler):
     """Gerçek yol mesafelerini kullanarak çözümü değerlendir"""

@@ -31,4 +31,4 @@ CUST NO.  XCOORD.    YCOORD.    DEMAND   # COMMENT
 22        40.9630    29.0990    10       # Bostancı
 23        41.0670    28.9190    15       # Gaziosmanpaşa
 24        41.0340    28.9780    20       # Tepebaşı
-25        40.9220    29.1360    25       # Maltepe
+25        40.9220    29.1360    25       # Maltepe 
