@@ -1,86 +1,188 @@
-# Vehicle Routing Problem with Real Road Distances
+# Gerçek Yol Mesafeleri ile Araç Rotalama Problemi (VRP)
 
-## Overview
-This application solves the Vehicle Routing Problem (VRP) using real road distances from OpenStreetMap (OSRM) and provides navigation through GraphHopper. The solution is based on an enhanced Tabu Search algorithm with adaptive neighborhood structures.
+## 📋 İçindekiler
+- [Genel Bakış](#genel-bakış)
+- [Sistem Gereksinimleri](#sistem-gereksinimleri)
+- [Kurulum](#kurulum)
+- [Kullanım](#kullanım)
+- [API Endpoints](#api-endpoints)
+- [Teknik Detaylar](#teknik-detaylar)
+- [Desteklenen Şehirler](#desteklenen-şehirler)
+- [Sorun Giderme](#sorun-giderme)
+- [Katkıda Bulunma](#katkıda-bulunma)
 
-### Components
-- **Data Processing** (`process_data.py`): 
-  - Loads problem instances
-  - Calculates real road distances using OSRM
-  - Handles distance matrix caching
-  - Creates GraphHopper navigation links
+## 🎯 Genel Bakış
+Bu uygulama, lojistik ve dağıtım operasyonları için optimize edilmiş rota planlaması sağlar. OpenStreetMap (OSRM) üzerinden gerçek yol mesafelerini kullanarak çözüm üretir ve GraphHopper ile detaylı navigasyon imkanı sunar. Çözüm, adaptif komşuluk yapıları içeren geliştirilmiş bir Tabu Arama algoritmasına dayanmaktadır.
 
-- **Core Functions** (`core_funs.py`):
-  - Adaptive neighborhood generation
-  - Parallel solution evaluation
-  - Distance calculations
-  - Solution diversification
+### 🌟 Temel Özellikler
+- Gerçek zamanlı trafik verilerine dayalı rota optimizasyonu
+- Çoklu araç desteği
+- Kapasite kısıtlamaları
+- Zaman penceresi kısıtlamaları
+- Dinamik rota güncellemeleri
+- Web tabanlı görselleştirme
+- REST API desteği
 
-- **Algorithm** (`alg_creator.py`):
-  - Enhanced Tabu Search implementation
-  - Adaptive parameter tuning
-  - Multiple neighborhood structures
-  - Solution tracking and improvement
+## 💻 Sistem Gereksinimleri
+- Python 3.8 veya üzeri
+- 4GB RAM (minimum)
+- Internet bağlantısı (OSRM servisleri için)
+- Linux, Windows veya macOS işletim sistemi
 
-### Features
-- Real road distance calculations using OSRM
-- GraphHopper navigation integration
-- Adaptive Tabu Search with:
-  - Multiple neighborhood structures
-  - Dynamic parameter adjustment
-  - Solution diversification
-  - Parallel evaluation
-- Efficient caching system
-- Early stopping mechanism
+## 🚀 Kurulum
 
-### Quick Start
-1. Install requirements:
+### 1. Projeyi İndirin
 ```bash
-pip install requests polyline
+git clone https://github.com/kullanici/vrp-project.git
+cd vrp-project
 ```
 
-2. Run with default parameters:
+### 2. Sanal Ortam Oluşturun
 ```bash
-python test_vrp.py
+python -m venv venv
+source venv/bin/activate  # Linux/macOS
+# veya
+venv\Scripts\activate  # Windows
 ```
 
-Or run with specific parameters:
+### 3. Gereksinimleri Yükleyin
 ```bash
-python run.py istanbultest TABU
+pip install -r requirements.txt
 ```
 
-### Data Format
-Problem instances should be in the following format:
+## 📱 Kullanım
+
+### Web Arayüzü ile Kullanım
+1. Sunucuyu başlatın:
+```bash
+python app.py
 ```
-Instance Name
-NumVehicles Capacity
-NodeID Latitude Longitude Demand ReadyTime DueTime ServiceTime # Location
-...
+2. Tarayıcınızda `http://localhost:5000` adresine gidin
+3. Şehir seçin ve parametreleri ayarlayın
+4. "Optimize Et" butonuna tıklayın
+
+### API ile Kullanım
+```python
+import requests
+
+data = {
+    "instance_name": "istanbul",
+    "num_customers": 15,
+    "vehicle_capacity": 500
+}
+
+response = requests.post('http://localhost:5000/api/optimize', json=data)
+routes = response.json()
 ```
 
-Example:
+## 🔌 API Endpoints
+
+### `POST /api/optimize`
+Rota optimizasyonu için kullanılır.
+
+#### İstek Parametreleri
+```json
+{
+    "instance_name": "istanbul",
+    "num_customers": 15,
+    "vehicle_capacity": 500
+}
 ```
-Istanbul VRP Test Instance
-25 500
-0 41.0082 28.9784 0 0 1000 0 # Depot (Mecidiyeköy)
-1 41.035 28.975 10 0 1000 10 # Şişli
-...
+
+#### Başarılı Yanıt
+```json
+{
+    "success": true,
+    "routes": [...],
+    "vehicle_capacity": 500
+}
 ```
 
-### Algorithm Parameters
-- `individual_size`: Number of delivery locations
-- `pop_size`: Initial population size
-- `n_gen`: Maximum iterations
-- `tabu_size`: Initial tabu list size
-- `stagnation_limit`: Diversification threshold
+### `GET /api/instances`
+Mevcut problem örneklerini listeler.
 
-### Neighborhood Structures
-The algorithm uses multiple neighborhood structures with adaptive weights:
-- Swap: Multiple point exchanges
-- Insert: Sequential point movements
-- Reverse: Segment reversals
-- Scramble: Segment shuffling
-- Block Move: Block relocations
-- Cross: Cross-exchange operations
+## 🔧 Teknik Detaylar
 
-Each structure's weight is dynamically adjusted based on its success in finding improvements.
+### Bileşenler
+1. **Veri İşleme** (`process_data.py`)
+   - Problem örneklerini yükler ve doğrular
+   - OSRM API ile gerçek mesafeleri hesaplar
+   - Mesafe matrislerini önbellekler
+   - GraphHopper navigasyon bağlantıları oluşturur
+
+2. **Temel Fonksiyonlar** (`core_funs.py`)
+   - Adaptif komşuluk üretimi
+   - Paralel çözüm değerlendirmesi
+   - Mesafe hesaplamaları
+   - Çözüm çeşitlendirme stratejileri
+
+3. **Algoritma** (`alg_creator.py`)
+   - Tabu Arama implementasyonu
+   - Adaptif parametre ayarlama
+   - Çoklu komşuluk yapıları
+   - Çözüm izleme ve iyileştirme
+
+### Algoritma Parametreleri
+| Parametre | Açıklama | Varsayılan Değer |
+|-----------|----------|------------------|
+| `individual_size` | Teslimat noktası sayısı | 15 |
+| `pop_size` | Başlangıç popülasyon büyüklüğü | 100 |
+| `n_gen` | Maksimum iterasyon sayısı | 1200 |
+| `tabu_size` | Tabu listesi boyutu | 45 |
+| `stagnation_limit` | Çeşitlendirme eşiği | 40 |
+
+### Komşuluk Yapıları
+1. **Takas (Swap)**
+   - İki nokta arasında yer değiştirme
+   - Kompleksite: O(n²)
+
+2. **Ekleme (Insert)**
+   - Bir noktayı farklı bir konuma taşıma
+   - Kompleksite: O(n)
+
+3. **Ters Çevirme (Reverse)**
+   - Rota segmentini tersine çevirme
+   - Kompleksite: O(n)
+
+4. **Karıştırma (Scramble)**
+   - Rota segmentini rastgele karıştırma
+   - Kompleksite: O(n log n)
+
+## 🌍 Desteklenen Şehirler
+| Şehir | Veri Seti | Müşteri Sayısı |
+|-------|-----------|----------------|
+| İstanbul | istanbul.txt | 100 |
+| Ankara | ankara.txt | 75 |
+| İzmir | izmir.txt | 50 |
+| Bursa | bursa.txt | 40 |
+| Tokat | tokat.txt | 30 |
+
+## 🔍 Sorun Giderme
+
+### Sık Karşılaşılan Hatalar
+1. **OSRM Bağlantı Hatası**
+   ```
+   Çözüm: Internet bağlantınızı kontrol edin veya yerel OSRM sunucusu kurun
+   ```
+
+2. **Bellek Yetersizliği**
+   ```
+   Çözüm: Müşteri sayısını azaltın veya sistem RAM'ini artırın
+   ```
+
+3. **Çözüm Bulunamadı**
+   ```
+   Çözüm: Araç kapasitesini artırın veya müşteri taleplerini kontrol edin
+   ```
+
+## 🤝 Katkıda Bulunma
+1. Bu depoyu fork edin
+2. Yeni bir branch oluşturun (`git checkout -b feature/yeniOzellik`)
+3. Değişikliklerinizi commit edin (`git commit -am 'Yeni özellik: X'`)
+4. Branch'inizi push edin (`git push origin feature/yeniOzellik`)
+5. Pull Request oluşturun
+
+### Kod Stili
+- PEP 8 kurallarına uyun
+- Fonksiyonlarınıza docstring ekleyin
+- Değişken isimlerini Türkçe karakterler kullanmadan yazın
