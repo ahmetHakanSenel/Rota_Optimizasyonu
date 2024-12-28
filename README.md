@@ -1,188 +1,171 @@
 # Gerçek Yol Mesafeleri ile Araç Rotalama Problemi (VRP)
 
-## 📋 İçindekiler
-- [Genel Bakış](#genel-bakış)
-- [Sistem Gereksinimleri](#sistem-gereksinimleri)
-- [Kurulum](#kurulum)
-- [Kullanım](#kullanım)
-- [API Endpoints](#api-endpoints)
-- [Teknik Detaylar](#teknik-detaylar)
-- [Desteklenen Şehirler](#desteklenen-şehirler)
-- [Sorun Giderme](#sorun-giderme)
-- [Katkıda Bulunma](#katkıda-bulunma)
+## 📋 Proje Yapısı
+
+```
+.
+├── app.py                 # Flask web uygulaması
+├── alg_creator.py         # Tabu arama algoritması
+├── core_funs.py          # Temel fonksiyonlar
+├── process_data.py       # Veri işleme ve OSRM entegrasyonu
+├── data/                 # Problem örnekleri
+└── templates/            # Web arayüzü şablonları
+```
 
 ## 🎯 Genel Bakış
-Bu uygulama, lojistik ve dağıtım operasyonları için optimize edilmiş rota planlaması sağlar. OpenStreetMap (OSRM) üzerinden gerçek yol mesafelerini kullanarak çözüm üretir ve GraphHopper ile detaylı navigasyon imkanı sunar. Çözüm, adaptif komşuluk yapıları içeren geliştirilmiş bir Tabu Arama algoritmasına dayanmaktadır.
+Bu proje, araç rotalama problemini çözmek için geliştirilmiş bir optimizasyon sistemidir. OpenStreetMap üzerinden gerçek yol mesafelerini kullanarak, çoklu araç ve kapasite kısıtlamaları altında optimal rotalar üretir.
 
-### 🌟 Temel Özellikler
-- Gerçek zamanlı trafik verilerine dayalı rota optimizasyonu
-- Çoklu araç desteği
-- Kapasite kısıtlamaları
-- Zaman penceresi kısıtlamaları
-- Dinamik rota güncellemeleri
-- Web tabanlı görselleştirme
-- REST API desteği
+## 💻 Temel Bileşenler ve İşleyiş
 
-## 💻 Sistem Gereksinimleri
-- Python 3.8 veya üzeri
-- 4GB RAM (minimum)
-- Internet bağlantısı (OSRM servisleri için)
-- Linux, Windows veya macOS işletim sistemi
+### 1. Veri İşleme (`process_data.py`)
+Problem verilerinin yüklenmesi ve işlenmesinden sorumlu ana sınıf:
 
-## 🚀 Kurulum
-
-### 1. Projeyi İndirin
-```bash
-git clone https://github.com/kullanici/vrp-project.git
-cd vrp-project
-```
-
-### 2. Sanal Ortam Oluşturun
-```bash
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-# veya
-venv\Scripts\activate  # Windows
-```
-
-### 3. Gereksinimleri Yükleyin
-```bash
-pip install -r requirements.txt
-```
-
-## 📱 Kullanım
-
-### Web Arayüzü ile Kullanım
-1. Sunucuyu başlatın:
-```bash
-python app.py
-```
-2. Tarayıcınızda `http://localhost:5000` adresine gidin
-3. Şehir seçin ve parametreleri ayarlayın
-4. "Optimize Et" butonuna tıklayın
-
-### API ile Kullanım
 ```python
-import requests
-
-data = {
-    "instance_name": "istanbul",
-    "num_customers": 15,
-    "vehicle_capacity": 500
-}
-
-response = requests.post('http://localhost:5000/api/optimize', json=data)
-routes = response.json()
+class ProblemInstance:
+    def __init__(self, instance_name, force_recalculate=False):
+        self.instance_name = instance_name
+        self.cache = {}
+        self.data = None
+        
+    def load_data(self):
+        # Veri dosyasını okur ve parse eder
+        
+    def calculate_distances(self):
+        # OSRM API ile gerçek mesafeleri hesaplar
+        
+    def get_data(self):
+        # İşlenmiş veri setini döndürür
 ```
 
-## 🔌 API Endpoints
+### 2. Algoritma Çekirdeği (`core_funs.py`)
+Temel optimizasyon fonksiyonlarını içerir:
 
-### `POST /api/optimize`
-Rota optimizasyonu için kullanılır.
-
-#### İstek Parametreleri
-```json
-{
-    "instance_name": "istanbul",
-    "num_customers": 15,
-    "vehicle_capacity": 500
-}
+```python
+def calculate_total_distance(route, distance_matrix):
+    """Toplam rota mesafesini hesaplar"""
+    
+def check_capacity_constraint(route, demands, capacity):
+    """Kapasite kısıtlamalarını kontrol eder"""
+    
+def generate_neighbor(current_solution, neighborhood_type):
+    """Komşu çözüm üretir"""
+    
+class Solution:
+    def __init__(self, routes, distance, capacity_violations):
+        self.routes = routes
+        self.total_distance = distance
+        self.violations = capacity_violations
 ```
 
-#### Başarılı Yanıt
-```json
-{
-    "success": true,
-    "routes": [...],
-    "vehicle_capacity": 500
-}
+### 3. Tabu Arama Algoritması (`alg_creator.py`)
+Ana optimizasyon algoritmasını içerir:
+
+```python
+class TabuSearch:
+    def __init__(self, distance_matrix, demands, capacity):
+        self.distance_matrix = distance_matrix
+        self.demands = demands
+        self.capacity = capacity
+        self.tabu_list = []
+        
+    def run(self, max_iterations):
+        """Ana tabu arama döngüsü"""
+        
+    def evaluate_solution(self, solution):
+        """Çözüm kalitesini değerlendirir"""
 ```
 
-### `GET /api/instances`
-Mevcut problem örneklerini listeler.
+#### Komşuluk Yapıları
+1. **Takas (Swap)**: İki müşteri noktasının yerini değiştirir
+```python
+def swap_operator(route, i, j):
+    route[i], route[j] = route[j], route[i]
+    return route
+```
 
-## 🔧 Teknik Detaylar
+2. **Ekleme (Insert)**: Bir müşteriyi farklı bir konuma taşır
+```python
+def insert_operator(route, source, target):
+    customer = route.pop(source)
+    route.insert(target, customer)
+    return route
+```
 
-### Bileşenler
-1. **Veri İşleme** (`process_data.py`)
-   - Problem örneklerini yükler ve doğrular
-   - OSRM API ile gerçek mesafeleri hesaplar
-   - Mesafe matrislerini önbellekler
-   - GraphHopper navigasyon bağlantıları oluşturur
+3. **Ters Çevirme (Reverse)**: Rota segmentini tersine çevirir
+```python
+def reverse_operator(route, start, end):
+    route[start:end] = reversed(route[start:end])
+    return route
+```
 
-2. **Temel Fonksiyonlar** (`core_funs.py`)
-   - Adaptif komşuluk üretimi
-   - Paralel çözüm değerlendirmesi
-   - Mesafe hesaplamaları
-   - Çözüm çeşitlendirme stratejileri
+### 4. Web Uygulaması (`app.py`)
+Flask tabanlı web arayüzü:
 
-3. **Algoritma** (`alg_creator.py`)
-   - Tabu Arama implementasyonu
-   - Adaptif parametre ayarlama
-   - Çoklu komşuluk yapıları
-   - Çözüm izleme ve iyileştirme
+```python
+@app.route('/api/optimize', methods=['POST'])
+def optimize_route():
+    """
+    1. İstek verilerini alır
+    2. Problem örneğini yükler
+    3. Tabu aramayı çalıştırır
+    4. Sonuçları formatlar ve döndürür
+    """
+```
 
-### Algoritma Parametreleri
-| Parametre | Açıklama | Varsayılan Değer |
-|-----------|----------|------------------|
-| `individual_size` | Teslimat noktası sayısı | 15 |
-| `pop_size` | Başlangıç popülasyon büyüklüğü | 100 |
-| `n_gen` | Maksimum iterasyon sayısı | 1200 |
-| `tabu_size` | Tabu listesi boyutu | 45 |
-| `stagnation_limit` | Çeşitlendirme eşiği | 40 |
+## 🔄 Veri Akışı
 
-### Komşuluk Yapıları
-1. **Takas (Swap)**
-   - İki nokta arasında yer değiştirme
-   - Kompleksite: O(n²)
-
-2. **Ekleme (Insert)**
-   - Bir noktayı farklı bir konuma taşıma
-   - Kompleksite: O(n)
-
-3. **Ters Çevirme (Reverse)**
-   - Rota segmentini tersine çevirme
-   - Kompleksite: O(n)
-
-4. **Karıştırma (Scramble)**
-   - Rota segmentini rastgele karıştırma
-   - Kompleksite: O(n log n)
-
-## 🌍 Desteklenen Şehirler
-| Şehir | Veri Seti | Müşteri Sayısı |
-|-------|-----------|----------------|
-| İstanbul | istanbul.txt | 100 |
-| Ankara | ankara.txt | 75 |
-| İzmir | izmir.txt | 50 |
-| Bursa | bursa.txt | 40 |
-| Tokat | tokat.txt | 30 |
-
-## 🔍 Sorun Giderme
-
-### Sık Karşılaşılan Hatalar
-1. **OSRM Bağlantı Hatası**
-   ```
-   Çözüm: Internet bağlantınızı kontrol edin veya yerel OSRM sunucusu kurun
+1. **Veri Yükleme**
+   ```python
+   instance = ProblemInstance("ornek1")
+   data = instance.get_data()
    ```
 
-2. **Bellek Yetersizliği**
-   ```
-   Çözüm: Müşteri sayısını azaltın veya sistem RAM'ini artırın
-   ```
-
-3. **Çözüm Bulunamadı**
-   ```
-   Çözüm: Araç kapasitesini artırın veya müşteri taleplerini kontrol edin
+2. **Mesafe Matrisi Oluşturma**
+   ```python
+   distances = instance.calculate_distances()
    ```
 
-## 🤝 Katkıda Bulunma
-1. Bu depoyu fork edin
-2. Yeni bir branch oluşturun (`git checkout -b feature/yeniOzellik`)
-3. Değişikliklerinizi commit edin (`git commit -am 'Yeni özellik: X'`)
-4. Branch'inizi push edin (`git push origin feature/yeniOzellik`)
-5. Pull Request oluşturun
+3. **Optimizasyon**
+   ```python
+   tabu = TabuSearch(distances, data['demands'], data['capacity'])
+   solution = tabu.run(max_iterations=1000)
+   ```
 
-### Kod Stili
-- PEP 8 kurallarına uyun
-- Fonksiyonlarınıza docstring ekleyin
-- Değişken isimlerini Türkçe karakterler kullanmadan yazın
+4. **Sonuç İşleme**
+   ```python
+   routes = solution.get_routes()
+   total_distance = solution.get_total_distance()
+   ```
+
+## 🔧 Algoritma Detayları
+
+### Tabu Arama Mekanizması
+```python
+def tabu_search(initial_solution):
+    current = initial_solution
+    best = current
+    tabu_list = []
+    
+    while not stopping_condition():
+        neighborhood = generate_neighbors(current)
+        best_neighbor = None
+        
+        for neighbor in neighborhood:
+            if (is_better(neighbor, best_neighbor) and 
+                not is_tabu(neighbor, tabu_list)):
+                best_neighbor = neighbor
+                
+        current = best_neighbor
+        update_tabu_list(tabu_list, current)
+        
+        if is_better(current, best):
+            best = current
+            
+    return best
+```
+
+### Çözüm Değerlendirme
+Her çözüm şu kriterlere göre değerlendirilir:
+1. Toplam mesafe
+2. Kapasite kısıtı ihlalleri
+3. Rota sayısı
