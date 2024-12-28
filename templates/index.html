@@ -3,129 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VRP Route Optimization</title>
+    <title>Rota Optimizasyonu</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    <style>
-        body {
-            background-color: #212529;
-            color: #e9ecef;
-        }
-        
-        #map {
-            height: 600px;
-            width: 100%;
-            border-radius: 8px;
-            border: 1px solid #495057;
-        }
-        
-        .control-panel {
-            background-color: #343a40;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid #495057;
-        }
-        
-        .route-info {
-            margin-top: 20px;
-        }
-        
-        .loading-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(33, 37, 41, 0.8);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            display: none;
-        }
-        
-        .route-details {
-            background-color: #343a40;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
-            border: 1px solid #495057;
-        }
-        
-        .route-stop {
-            padding: 8px;
-            margin: 5px 0;
-            background-color: #212529;
-            border-radius: 4px;
-            font-size: 0.9em;
-        }
-        
-        .depot-marker {
-            background-color: #dc3545;
-            border: 2px solid white;
-            border-radius: 50%;
-            width: 32px !important;
-            height: 32px !important;
-            margin-left: -16px !important;
-            margin-top: -16px !important;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 14px;
-        }
-        
-        .customer-marker {
-            background-color: #0d6efd;
-            border: 2px solid white;
-            border-radius: 50%;
-            width: 24px !important;
-            height: 24px !important;
-            margin-left: -12px !important;
-            margin-top: -12px !important;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 12px;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <div class="container mt-4">
-        <h1 class="mb-4">VRP Route Optimization</h1>
+        <h1 class="mb-4">Rota Optimizasyonu</h1>
         
         <div class="row">
             <div class="col-md-4">
                 <div class="control-panel">
                     <form id="optimizeForm">
                         <div class="mb-3">
-                            <label for="instanceSelect" class="form-label">Select Instance</label>
+                            <label for="instanceSelect" class="form-label">Şehir</label>
                             <select class="form-select" id="instanceSelect" required>
                                 <!-- Will be populated dynamically -->
                             </select>
                         </div>
                         
                         <div class="mb-3">
-                            <label for="numCustomers" class="form-label">Number of Customers</label>
+                            <label for="numCustomers" class="form-label">Müşteri Sayısı</label>
                             <input type="number" class="form-control" id="numCustomers" value="15" min="5" max="25" required>
                         </div>
                         
+                        <div class="mb-3">
+                            <label for="vehicleCapacity" class="form-label">Araç Kapasitesi</label>
+                            <input type="number" class="form-control" id="vehicleCapacity" value="500" min="100" max="1000" step="50" required>
+                        </div>
+                        
                         <button type="submit" class="btn btn-primary" id="optimizeBtn">
-                            Optimize Route
+                            Optimize Et
                         </button>
                     </form>
                     
                     <div class="route-info">
-                        <h5>Route Information</h5>
+                        <h5>Rota Bilgileri</h5>
                         <div id="routeInfo">
-                            <!-- Will be populated with route details -->
                         </div>
                         <div id="routeDetails">
-                            <!-- Will be populated with detailed route information -->
+                            
                         </div>
                     </div>
                 </div>
@@ -134,7 +52,7 @@
             <div class="col-md-8 position-relative">
                 <div class="loading-overlay">
                     <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
+                        <span class="visually-hidden">Yükleniyor...</span>
                     </div>
                 </div>
                 <div id="map"></div>
@@ -157,9 +75,7 @@
         // Initialize map with Turkey view
         const map = L.map('map').setView([39.0, 35.0], 6);
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         let currentRouteLayer = null;
         let lastSelectedCity = null;
@@ -206,6 +122,54 @@
                 });
             });
 
+        // Update customer count limit when instance changes
+        document.getElementById('instanceSelect').addEventListener('change', async (e) => {
+            const selectedCity = e.target.value.toLowerCase();
+            clearRouteData();
+            
+            try {
+                const response = await fetch('/api/optimize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        instance_name: selectedCity,
+                        num_customers: 1,
+                        vehicle_capacity: parseInt(document.getElementById('vehicleCapacity').value)
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    if (data.error.includes('instance only has')) {
+                        const match = data.error.match(/instance only has (\d+) customers/);
+                        if (match) {
+                            const maxCustomers = parseInt(match[1]);
+                            const numCustomersInput = document.getElementById('numCustomers');
+                            numCustomersInput.max = maxCustomers;
+                            // Set a reasonable default value (half of max or 15, whichever is smaller)
+                            const defaultValue = Math.min(Math.ceil(maxCustomers / 2), 15);
+                            numCustomersInput.value = defaultValue;
+                        }
+                    } else {
+                        console.error('Error:', data.error);
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating customer limit:', error);
+            }
+            
+            // Update map view
+            if (cityCoordinates[selectedCity]) {
+                map.setView(
+                    [cityCoordinates[selectedCity].lat, cityCoordinates[selectedCity].lng],
+                    cityCoordinates[selectedCity].zoom
+                );
+            }
+        });
+
         // Handle form submission
         document.getElementById('optimizeForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -217,7 +181,7 @@
             clearRouteData();
             
             optimizeBtn.disabled = true;
-            optimizeBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Optimizing...';
+            optimizeBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Optimize Ediliyor...';
             loadingOverlay.style.display = 'flex';
             
             try {
@@ -228,7 +192,8 @@
                     },
                     body: JSON.stringify({
                         instance_name: selectedCity,
-                        num_customers: parseInt(document.getElementById('numCustomers').value)
+                        num_customers: parseInt(document.getElementById('numCustomers').value),
+                        vehicle_capacity: parseInt(document.getElementById('vehicleCapacity').value)
                     }),
                 });
                 
@@ -264,10 +229,28 @@
                     route.forEach((point, index) => {
                         const isDepot = index === 0 || index === route.length - 1;
                         const markerNumber = isDepot ? 'D' : index;
+                        
+                        // Create marker style with route color
+                        const markerStyle = `
+                            background-color: ${routeColor};
+                            border: 2px solid white;
+                            border-radius: 50%;
+                            width: ${isDepot ? '32' : '24'}px;
+                            height: ${isDepot ? '32' : '24'}px;
+                            margin-left: ${isDepot ? '-16' : '-12'}px;
+                            margin-top: ${isDepot ? '-16' : '-12'}px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: white;
+                            font-weight: bold;
+                            font-size: ${isDepot ? '14' : '12'}px;
+                        `;
+                        
                         const marker = L.marker([point.lat, point.lng], {
                             icon: L.divIcon({
                                 className: isDepot ? 'depot-marker' : 'customer-marker',
-                                html: `${markerNumber}`
+                                html: `<div style="${markerStyle}">${markerNumber}</div>`
                             })
                         }).bindPopup(`
                             <strong>${point.name}</strong><br>
@@ -352,7 +335,7 @@
                 alert('Error: ' + error.message);
             } finally {
                 optimizeBtn.disabled = false;
-                optimizeBtn.textContent = 'Optimize Route';
+                optimizeBtn.textContent = 'Optimize Et';
                 loadingOverlay.style.display = 'none';
             }
         });

@@ -1,0 +1,83 @@
+body {
+    background-color: #212529;
+    color: #e9ecef;
+}
+
+#map {
+    height: 600px;
+    width: 100%;
+    border-radius: 8px;
+    border: 1px solid #495057;
+}
+
+.control-panel {
+    background-color: #343a40;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border: 1px solid #495057;
+}
+
+.route-info {
+    margin-top: 20px;
+}
+
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(33, 37, 41, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    display: none;
+}
+
+.route-details {
+    background-color: #343a40;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 15px;
+    border: 1px solid #495057;
+}
+
+.route-stop {
+    padding: 8px;
+    margin: 5px 0;
+    background-color: #212529;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.depot-marker {
+    border: 2px solid white;
+    border-radius: 50%;
+    width: 32px !important;
+    height: 32px !important;
+    margin-left: -16px !important;
+    margin-top: -16px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.customer-marker {
+    border: 2px solid white;
+    border-radius: 50%;
+    width: 24px !important;
+    height: 24px !important;
+    margin-left: -12px !important;
+    margin-top: -12px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 12px;
+} 

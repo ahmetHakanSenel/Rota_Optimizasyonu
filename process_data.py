@@ -73,24 +73,38 @@ class ProblemInstance:
 
                     if line_count == 1:  
                         parsed_data[INSTANCE_NAME] = line
-                    elif len(values) == 2 and values[1].isdigit(): 
+                    elif len(values) >= 2 and values[0].isdigit() and values[1].isdigit(): 
                         parsed_data[MAX_VEHICLE_NUMBER] = int(values[0])
                         parsed_data[VEHICLE_CAPACITY] = float(values[1])
-                    elif len(values) >= 7:  
-                        cust_id = int(values[0])
-                        customer_data = {
-                            COORDINATES: {
-                                X_COORD: float(values[1]),
-                                Y_COORD: float(values[2]),
-                            },
-                            DEMAND: float(values[3]),
-                            'comment': ' '.join(values[7:]).strip('# ') if len(values) > 7 else ''
-                        }
-                        
-                        if cust_id == 0:
-                            parsed_data[DEPART] = customer_data
-                        else:
-                            parsed_data[f'C_{cust_id}'] = customer_data
+                    elif len(values) >= 4:  # Changed from 7 to 4 to be more lenient with data format
+                        try:
+                            cust_id = int(values[0])
+                            customer_data = {
+                                COORDINATES: {
+                                    X_COORD: float(values[1]),
+                                    Y_COORD: float(values[2]),
+                                },
+                                DEMAND: float(values[3]),
+                                'comment': ' '.join(values[4:]).strip('# ') if len(values) > 4 else ''
+                            }
+                            
+                            if cust_id == 0:
+                                parsed_data[DEPART] = customer_data
+                            else:
+                                parsed_data[f'C_{cust_id}'] = customer_data
+                        except (ValueError, IndexError) as e:
+                            print(f"Warning: Could not parse line {line_count}: {line}")
+                            continue
+
+            print(f"Loaded {len([k for k in parsed_data.keys() if k.startswith('C_')])} customers from {problem_name}")
+            
+            if not parsed_data[DEPART]:
+                print("Error: No depot found in instance")
+                return None
+                
+            if not any(k.startswith('C_') for k in parsed_data.keys()):
+                print("Error: No customers found in instance")
+                return None
 
             if not force_recalculate and os.path.exists(cache_file):
                 try:

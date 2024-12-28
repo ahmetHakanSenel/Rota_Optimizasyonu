@@ -3,6 +3,7 @@ import collections
 import random
 from process_data import OSRMHandler, ProblemInstance
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import math
 
 class AdaptiveTabuList:
     """Adaptif Tabu Listesi sınıfı"""
@@ -51,17 +52,19 @@ class AdaptiveTabuList:
             self.best_known = min(self.elite_solutions, key=lambda x: x[1])[1]
 
 def k_opt_improvement(solution, instance, map_handler, k=2):
-    """Birleştirilmiş k-opt iyileştirme"""
+    """Geliştirilmiş k-opt iyileştirme"""
     improved = solution.copy()
     best_distance = evaluate_solution_with_real_distances(improved, instance, map_handler)
-    size = len(improved)
+    improvement_found = True
     
-    while True:
+    while improvement_found:
         improvement_found = False
         
         if k == 2:
-            for i in range(size - 1):
-                for j in range(i + 2, size):
+            # 2-opt: Tüm olası kenar çiftlerini kontrol et
+            for i in range(len(improved) - 2):
+                for j in range(i + 2, len(improved)):
+                    # Kenarları ters çevir
                     new_solution = improved[:i] + list(reversed(improved[i:j])) + improved[j:]
                     new_distance = evaluate_solution_with_real_distances(new_solution, instance, map_handler)
                     
@@ -70,14 +73,20 @@ def k_opt_improvement(solution, instance, map_handler, k=2):
                         best_distance = new_distance
                         improvement_found = True
                         break
-        else:  # k == 3
-            for i in range(size - 2):
-                for j in range(i + 1, size - 1):
-                    for k in range(j + 1, size):
+                if improvement_found:
+                    break
+                    
+        elif k == 3:
+            # 3-opt: Üç kenarı değiştir
+            for i in range(len(improved) - 4):
+                for j in range(i + 2, len(improved) - 2):
+                    for k in range(j + 2, len(improved)):
+                        # Tüm olası 3-opt kombinasyonları
                         combinations = [
                             improved[:i] + improved[i:j][::-1] + improved[j:k][::-1] + improved[k:],
                             improved[:i] + improved[i:j] + improved[j:k][::-1] + improved[k:],
-                            improved[:i] + improved[i:j][::-1] + improved[j:k] + improved[k:]
+                            improved[:i] + improved[i:j][::-1] + improved[j:k] + improved[k:],
+                            improved[:i] + list(reversed(improved[i:k])) + improved[k:]
                         ]
                         
                         for new_sol in combinations:
@@ -87,9 +96,10 @@ def k_opt_improvement(solution, instance, map_handler, k=2):
                                 best_distance = new_distance
                                 improvement_found = True
                                 break
-        
-        if not improvement_found:
-            break
+                        if improvement_found:
+                            break
+                    if improvement_found:
+                        break
     
     return improved
 
@@ -104,7 +114,7 @@ def create_initial_solution(instance, size, map_handler):
         instance[DEPART][COORDINATES][Y_COORD]
     )
     
-    # Önce tüm noktaların depoya olan uzaklıklarını hesapla
+    # Tüm noktaların depoya olan uzaklıklarını hesapla
     distances_to_depot = {}
     for i in range(1, size + 1):
         point = (
@@ -114,24 +124,28 @@ def create_initial_solution(instance, size, map_handler):
         dist = map_handler.get_distance(depot, point)
         distances_to_depot[i] = dist
     
-    # En yakın ve en uzak 3'er nokta + 2 rastgele nokta ile başla
-    closest_points = sorted(distances_to_depot.items(), key=lambda x: x[1])[:3]
-    farthest_points = sorted(distances_to_depot.items(), key=lambda x: x[1], reverse=True)[:3]
-    start_points = [p[0] for p in closest_points + farthest_points]
+    # Farklı başlangıç stratejileri
+    strategies = ['nearest', 'farthest', 'sweep', 'balanced']
     
-    # Rastgele 2 nokta ekle
-    remaining_points = set(range(1, size + 1)) - set(start_points)
-    if remaining_points:
-        start_points.extend(random.sample(list(remaining_points), min(2, len(remaining_points))))
-    
-    for start_point in start_points:
-        for strategy in ['nearest', 'balanced', 'farthest']:
-            solution = [start_point]
-            unvisited = set(range(1, size + 1)) - {start_point}
-            current_point = (
-                instance[f'C_{start_point}'][COORDINATES][X_COORD],
-                instance[f'C_{start_point}'][COORDINATES][Y_COORD]
-            )
+    for strategy in strategies:
+        if strategy == 'sweep':
+            # Açısal tarama yöntemi
+            angles = {}
+            for i in range(1, size + 1):
+                point = (
+                    instance[f'C_{i}'][COORDINATES][X_COORD],
+                    instance[f'C_{i}'][COORDINATES][Y_COORD]
+                )
+                angle = math.atan2(point[1] - depot[1], point[0] - depot[0])
+                angles[i] = angle
+            
+            # Açıya göre sırala
+            solution = sorted(range(1, size + 1), key=lambda x: angles[x])
+            
+        else:
+            solution = []
+            unvisited = set(range(1, size + 1))
+            current_point = depot
             
             while unvisited:
                 distances = {
@@ -141,14 +155,12 @@ def create_initial_solution(instance, size, map_handler):
                     for x in unvisited
                 }
                 
-                # Strateji seçimi
                 if strategy == 'nearest':
                     next_point = min(distances.items(), key=lambda x: x[1])[0]
                 elif strategy == 'farthest':
-                    valid_distances = {k:v for k,v in distances.items() if v != float('inf')}
-                    next_point = max(valid_distances.items(), key=lambda x: x[1])[0] if valid_distances else min(distances.items(), key=lambda x: x[1])[0]
+                    next_point = max(distances.items(), key=lambda x: x[1])[0]
                 else:  # balanced
-                    # Hem mesafe hem depoya uzaklığı dengele
+                    # Mesafe ve depoya uzaklık dengesi
                     next_point = min(distances.items(), 
                                    key=lambda x: x[1] + distances_to_depot[x[0]])[0]
                 
@@ -158,17 +170,16 @@ def create_initial_solution(instance, size, map_handler):
                     instance[f'C_{next_point}'][COORDINATES][X_COORD],
                     instance[f'C_{next_point}'][COORDINATES][Y_COORD]
                 )
-            
-            # Daha agresif iyileştirme
-            improved = k_opt_improvement(solution, instance, map_handler, k=2)
-            improved = k_opt_improvement(improved, instance, map_handler, k=3)
-            improved = k_opt_improvement(improved, instance, map_handler, k=2)
-            
-            # Toplam mesafeyi hesapla
-            distance = evaluate_solution_with_real_distances(improved, instance, map_handler)
-            if distance < best_distance:
-                best_solution = improved
-                best_distance = distance
+        
+        # 2-opt ve 3-opt iyileştirmeleri
+        improved = k_opt_improvement(solution, instance, map_handler, k=2)
+        improved = k_opt_improvement(improved, instance, map_handler, k=3)
+        
+        # En iyi çözümü güncelle
+        distance = evaluate_solution_with_real_distances(improved, instance, map_handler)
+        if distance < best_distance:
+            best_solution = improved
+            best_distance = distance
     
     return best_solution
 
@@ -182,7 +193,8 @@ def run_tabu_search(
     stagnation_limit=20,
     verbose=True,
     use_real_distances=True,
-    early_stop_limit=60
+    early_stop_limit=60,
+    vehicle_capacity=None
 ):
     """Geliştirilmiş Tabu Arama algoritması"""
     random.seed(42)
@@ -200,7 +212,19 @@ def run_tabu_search(
         print("Failed to precompute distances. Exiting...")
         return None
 
-    vehicle_capacity = float(instance.get('vehicle_capacity', 500))
+    # Use provided vehicle capacity or get from instance
+    if vehicle_capacity is None:
+        vehicle_capacity = float(instance.get('vehicle_capacity', 500))
+    
+    # Calculate total demand
+    total_demand = sum(float(instance[f'C_{i}']['demand']) for i in range(1, individual_size + 1))
+    print(f"Total demand: {total_demand}, Vehicle capacity: {vehicle_capacity}")
+    
+    # Check if problem is solvable with given capacity
+    if total_demand > vehicle_capacity * instance['max_vehicle_number']:
+        print("Problem is unsolvable: Total demand exceeds maximum possible capacity")
+        return None
+    
     customers = [(i, float(instance[f'C_{i}']['demand'])) for i in range(1, individual_size + 1)]
     
     def split_into_routes(solution):
@@ -223,6 +247,10 @@ def run_tabu_search(
         
         if current_route:  # Son rotayı ekle
             routes.append(current_route)
+        
+        # Check if we exceed maximum vehicle number
+        if len(routes) > instance['max_vehicle_number']:
+            return None
         
         return routes
 
@@ -267,7 +295,8 @@ def run_tabu_search(
     current_solution = list(range(1, individual_size + 1))
     random.shuffle(current_solution)
     
-    tabu_list = AdaptiveTabuList(tabu_size, tabu_size * 2)
+    tabu_list = AdaptiveTabuList(tabu_size * 2, tabu_size * 4)  # Tabu liste boyutunu artır
+    diversification_threshold = stagnation_limit // 2  # Daha erken çeşitlendirme
     stagnation_counter = 0
     no_improvement_counter = 0
     
@@ -276,58 +305,59 @@ def run_tabu_search(
         if verbose and iteration % 100 == 0:
             print(f"\nIteration {iteration}:")
         
-        # Early stopping kontrolü
         if no_improvement_counter >= early_stop_limit:
             print(f"\nEarly stopping! No improvement for {early_stop_limit} iterations.")
             break
         
-        # Komşu çözümler üret
-        neighbors = generate_neighbors(current_solution, method="swap", num_neighbors=20)
-        neighbors.extend(generate_neighbors(current_solution, method="2-opt", num_neighbors=20))
+        # Daha fazla komşu üret
+        neighbors = []
+        neighbors.extend(generate_neighbors(current_solution, method="swap", num_neighbors=30))
+        neighbors.extend(generate_neighbors(current_solution, method="2-opt", num_neighbors=30))
+        neighbors.extend(generate_neighbors(current_solution, method="insert", num_neighbors=20))
         
         # En iyi komşuyu bul
         best_neighbor = None
         best_neighbor_fitness = float('inf')
         
         for neighbor in neighbors:
-            if not tabu_list.contains(neighbor):
+            if not tabu_list.contains(neighbor, aspiration_value=evaluate_solution(neighbor)):
                 fitness = evaluate_solution(neighbor)
                 if fitness < best_neighbor_fitness:
                     best_neighbor = neighbor
                     best_neighbor_fitness = fitness
         
         if best_neighbor is None:
-            # Çeşitlilik ekle
             current_solution = diversify_solution(current_solution)
             stagnation_counter += 1
             continue
         
-        # Çözümü güncelle
+        # Her 5 iterasyonda bir 2-opt iyileştirmesi uygula
+        if iteration % 5 == 0:
+            best_neighbor = k_opt_improvement(best_neighbor, instance, maps_handler, k=2)
+        
+        # Her 10 iterasyonda bir 3-opt iyileştirmesi uygula
+        if iteration % 10 == 0:
+            best_neighbor = k_opt_improvement(best_neighbor, instance, maps_handler, k=3)
+        
         current_solution = best_neighbor
         current_fitness = best_neighbor_fitness
         
-        # En iyi çözümü güncelle
         if current_fitness < best_fitness:
             best_solution = current_solution.copy()
             best_fitness = current_fitness
             stagnation_counter = 0
             no_improvement_counter = 0
-            if verbose:
-                routes = split_into_routes(best_solution)
-                print(f"New best solution found!")
-                print(f"Number of vehicles: {len(routes)}")
-                print(f"Total distance: {calculate_total_distance(routes):.2f} km")
         else:
             stagnation_counter += 1
             no_improvement_counter += 1
         
-        # Tabu listesini güncelle
         tabu_list.add(current_solution)
         
-        # Durağanlık kontrolü
-        if stagnation_counter >= stagnation_limit:
-            print("Stagnation detected! Diversifying solution...")
+        # Daha agresif çeşitlendirme
+        if stagnation_counter >= diversification_threshold:
+            print("Diversifying solution...")
             current_solution = diversify_solution(current_solution)
+            current_solution = k_opt_improvement(current_solution, instance, maps_handler, k=2)
             stagnation_counter = 0
     
     if best_solution is None:

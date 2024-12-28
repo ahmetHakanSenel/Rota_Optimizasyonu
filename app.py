@@ -4,7 +4,7 @@ from alg_creator import run_tabu_search
 from process_data import ProblemInstance
 import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
 CORS(app)
 
 @app.route('/')
@@ -15,18 +15,43 @@ def index():
 def optimize_route():
     try:
         data = request.json
-        instance_name = data.get('instance_name', '').lower()  # Ensure lowercase
-        num_customers = data.get('num_customers', 15)
+        instance_name = data.get('instance_name', '').lower()
+        num_customers = int(data.get('num_customers', 15))
+        vehicle_capacity = float(data.get('vehicle_capacity', 500))
         
-        print(f"Processing request for instance: {instance_name}")  # Debug log
+        print(f"\nProcessing request for instance: {instance_name}")
+        print(f"Requested customers: {num_customers}")
+        print(f"Vehicle capacity: {vehicle_capacity}")
         
-        # Load problem instance with force recalculate
+        # Load problem instance
         problem_instance = ProblemInstance(instance_name, force_recalculate=True)
         instance = problem_instance.get_data()
         
         if instance is None:
-            print(f"Failed to load instance: {instance_name}")  # Debug log
+            print(f"Failed to load instance: {instance_name}")
             return jsonify({'error': f'Failed to load problem instance: {instance_name}'}), 400
+            
+        # Verify instance data
+        if 'depart' not in instance:
+            return jsonify({'error': f'No depot found in instance {instance_name}'}), 400
+            
+        # Count available customers in instance
+        customer_keys = sorted([k for k in instance.keys() if k.startswith('C_') and k != 'COORDINATES'])
+        available_customers = len(customer_keys)
+        
+        print(f"Found {available_customers} customers in instance {instance_name}")
+        print(f"Customer IDs: {[k.split('_')[1] for k in customer_keys]}")
+        
+        if available_customers == 0:
+            return jsonify({'error': f'No customers found in instance {instance_name}'}), 400
+            
+        if num_customers > available_customers:
+            return jsonify({
+                'error': f'Requested {num_customers} customers but instance only has {available_customers} customers'
+            }), 400
+        
+        # Override the instance's vehicle capacity with the user's input
+        instance['vehicle_capacity'] = vehicle_capacity
             
         # Run optimization
         routes = run_tabu_search(
@@ -39,15 +64,19 @@ def optimize_route():
             stagnation_limit=40,
             verbose=True,
             use_real_distances=True,
-            early_stop_limit=200
+            early_stop_limit=200,
+            vehicle_capacity=vehicle_capacity
         )
         
         if not routes:
-            return jsonify({'error': 'No solution found'}), 400
+            print("No solution found. Vehicle capacity might be too small for the total demand.")
+            total_demand = sum(float(instance[f'C_{i}']['demand']) for i in range(1, num_customers + 1))
+            return jsonify({
+                'error': f'No solution found. Total demand ({total_demand}) might be too large for the vehicle capacity ({vehicle_capacity})'
+            }), 400
             
         # Extract route information and split based on capacity
         route_data = []
-        vehicle_capacity = float(instance.get('vehicle_capacity', 500))
         
         print(f"Processing {len(routes)} routes for {instance_name}")  # Debug log
         
@@ -133,4 +162,4 @@ def get_instances():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(host='0.0.0.0', port=5000, debug=True) 
