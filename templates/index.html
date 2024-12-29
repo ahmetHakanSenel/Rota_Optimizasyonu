@@ -74,7 +74,7 @@
                         </div>
                         
                         <button type="submit" class="btn btn-primary" id="optimizeBtn">
-                            Optimize Et
+                            Rota Oluştur
                         </button>
                     </form>
                     
@@ -117,18 +117,16 @@
             'tokat': {lat: 40.3167, lng: 36.5500, zoom: 13}
         };
 
-        // Initialize map with Turkey view
         const map = L.map('map', {
             center: [39.0, 35.0],
             zoom: 6,
             minZoom: 6,
-            maxZoom: 18
+            maxZoom: 18,
+            attributionControl: false
         });
 
         // Add OpenStreetMap tile layer
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         let currentRouteLayer = null;
         let lastSelectedCity = null;
@@ -255,7 +253,7 @@
             clearRouteData();
             
             optimizeBtn.disabled = true;
-            optimizeBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Optimize Ediliyor...';
+            optimizeBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Rota Oluşturuluyor...';
             showLoading();
             
             try {
@@ -413,7 +411,7 @@
                 alert('Hata: ' + error.message);
             } finally {
                 optimizeBtn.disabled = false;
-                optimizeBtn.textContent = 'Optimize Et';
+                optimizeBtn.textContent = 'Rota Oluştur';
                 hideLoading();
             }
         });
