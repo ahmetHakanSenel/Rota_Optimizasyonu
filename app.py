@@ -90,7 +90,7 @@ def optimize_route():
             # Add depot as starting point
             depot_coords = instance['depart']['coordinates']
             current_route.append({
-                'name': 'Depot',
+                'name': 'Depo',
                 'lat': float(depot_coords['x']),
                 'lng': float(depot_coords['y']),
                 'demand': 0
@@ -106,7 +106,7 @@ def optimize_route():
                 if current_load + customer_demand > vehicle_capacity:
                     # Complete current route by adding depot
                     current_route.append({
-                        'name': 'Depot',
+                        'name': 'Depo',
                         'lat': float(depot_coords['x']),
                         'lng': float(depot_coords['y']),
                         'demand': 0
@@ -115,7 +115,7 @@ def optimize_route():
                     
                     # Start new route
                     current_route = [{
-                        'name': 'Depot',
+                        'name': 'Depo',
                         'lat': float(depot_coords['x']),
                         'lng': float(depot_coords['y']),
                         'demand': 0
@@ -131,17 +131,16 @@ def optimize_route():
                 })
                 current_load += customer_demand
             
-            # Complete last route by adding depot
-            if len(current_route) > 1:  # Only if route has customers
+            if len(current_route) > 1:
                 current_route.append({
-                    'name': 'Depot',
+                    'name': 'Depo',
                     'lat': float(depot_coords['x']),
                     'lng': float(depot_coords['y']),
                     'demand': 0
                 })
                 route_data.append(current_route)
         
-        print(f"Completed route calculation for {instance_name}")  # Debug log
+        print(f"Completed route calculation for {instance_name}")
         return jsonify({
             'success': True,
             'routes': route_data,
@@ -149,7 +148,7 @@ def optimize_route():
         })
         
     except Exception as e:
-        print(f"Error in optimize_route: {str(e)}")  # Add detailed error logging
+        print(f"Error in optimize_route: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/instances')

@@ -19,7 +19,11 @@ body {
 }
 
 .route-info {
-    margin-top: 20px;
+    margin-top: 25px;
+}
+
+.route-info h5 {
+    margin-bottom: 15px;
 }
 
 .loading-overlay {
