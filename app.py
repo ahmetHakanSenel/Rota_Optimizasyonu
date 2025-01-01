@@ -23,7 +23,6 @@ def optimize_route():
         print(f"Requested customers: {num_customers}")
         print(f"Vehicle capacity: {vehicle_capacity}")
         
-        # Load problem instance
         problem_instance = ProblemInstance(instance_name, force_recalculate=True)
         instance = problem_instance.get_data()
         
@@ -31,11 +30,9 @@ def optimize_route():
             print(f"Failed to load instance: {instance_name}")
             return jsonify({'error': f'Failed to load problem instance: {instance_name}'}), 400
             
-        # Verify instance data
         if 'depart' not in instance:
             return jsonify({'error': f'No depot found in instance {instance_name}'}), 400
             
-        # Count available customers in instance
         customer_keys = sorted([k for k in instance.keys() if k.startswith('C_') and k != 'COORDINATES'])
         available_customers = len(customer_keys)
         
@@ -50,20 +47,15 @@ def optimize_route():
                 'error': f'Requested {num_customers} customers but instance only has {available_customers} customers'
             }), 400
         
-        # Override the instance's vehicle capacity with the user's input
         instance['vehicle_capacity'] = vehicle_capacity
             
-        # Run optimization
         routes = run_tabu_search(
             instance_name=instance_name,
             individual_size=num_customers,
-            pop_size=100,
             n_gen=1200,
             tabu_size=45,
-            plot=False,
             stagnation_limit=40,
             verbose=True,
-            use_real_distances=True,
             early_stop_limit=200,
             vehicle_capacity=vehicle_capacity
         )
@@ -75,19 +67,16 @@ def optimize_route():
                 'error': f'No solution found. Total demand ({total_demand}) might be too large for the vehicle capacity ({vehicle_capacity})'
             }), 400
             
-        # Extract route information and split based on capacity
         route_data = []
         
         print(f"Processing {len(routes)} routes for {instance_name}")  # Debug log
         
-        # Clear the instance data after processing
         problem_instance.clear_data()
         
         for main_route in routes:
             current_route = []
             current_load = 0
             
-            # Add depot as starting point
             depot_coords = instance['depart']['coordinates']
             current_route.append({
                 'name': 'Depo',
@@ -96,15 +85,12 @@ def optimize_route():
                 'demand': 0
             })
             
-            # Process each customer in the route
             for point_id in main_route:
                 customer = instance[f'C_{point_id}']
                 customer_coords = customer['coordinates']
                 customer_demand = float(customer['demand'])
                 
-                # If adding this customer exceeds capacity, start a new route
                 if current_load + customer_demand > vehicle_capacity:
-                    # Complete current route by adding depot
                     current_route.append({
                         'name': 'Depo',
                         'lat': float(depot_coords['x']),
@@ -113,7 +99,6 @@ def optimize_route():
                     })
                     route_data.append(current_route)
                     
-                    # Start new route
                     current_route = [{
                         'name': 'Depo',
                         'lat': float(depot_coords['x']),
@@ -122,7 +107,6 @@ def optimize_route():
                     }]
                     current_load = 0
                 
-                # Add customer to current route
                 current_route.append({
                     'name': customer.get('comment', f'Customer {point_id}'),
                     'lat': float(customer_coords['x']),

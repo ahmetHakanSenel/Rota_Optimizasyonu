@@ -23,7 +23,7 @@ class ProblemInstance:
     _data = None
     _current_instance = None
     
-    def __new__(cls, problem_name=None, force_recalculate=False):
+    def __new__(cls):
         if cls._instance is None:
             cls._instance = super(ProblemInstance, cls).__new__(cls)
         return cls._instance

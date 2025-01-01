@@ -6,47 +6,7 @@
     <title>Rota Optimizasyonu</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-    <link rel="stylesheet" href="C:\Users\hsene\Downloads\VRP\VRP_TABU\css\style.css">
-    <style>
-        #map {
-            height: 600px;
-            width: 100%;
-            border-radius: 8px;
-            border: 1px solid #495057;
-            z-index: 1;
-        }
-        .leaflet-container {
-            background: #343a40;
-        }
-        .map-container {
-            position: relative;
-        }
-        .loading-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(33, 37, 41, 0.8);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            border-radius: 8px;
-        }
-        .spinner-container {
-            background: rgba(33, 37, 41, 0.9);
-            padding: 2rem;
-            border-radius: 8px;
-            text-align: center;
-        }
-        .spinner-text {
-            color: white;
-            margin-top: 1rem;
-            font-size: 1.1rem;
-            font-weight: 500;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <div class="container mt-4">
@@ -59,7 +19,6 @@
                         <div class="mb-3">
                             <label for="instanceSelect" class="form-label">Şehir</label>
                             <select class="form-select" id="instanceSelect" required>
-                                <!-- Will be populated dynamically -->
                             </select>
                         </div>
                         
@@ -91,7 +50,6 @@
             <div class="col-md-8">
                 <div class="map-container">
                     <div id="map"></div>
-                    <!-- Loading Overlay -->
                     <div class="loading-overlay">
                         <div class="spinner-container">
                             <div class="spinner-border text-primary" role="status">
@@ -108,7 +66,6 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script>
-        // City coordinates
         const cityCoordinates = {
             'bursa': {lat: 40.1885, lng: 29.0610, zoom: 12},
             'istanbul': {lat: 41.0082, lng: 28.9784, zoom: 11},
@@ -120,19 +77,17 @@
         const map = L.map('map', {
             center: [39.0, 35.0],
             zoom: 6,
-            minZoom: 6,
+            minZoom: 2,
             maxZoom: 18,
             attributionControl: false
         });
 
-        // Add OpenStreetMap tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         let currentRouteLayer = null;
         let lastSelectedCity = null;
         const loadingOverlay = document.querySelector('.loading-overlay');
 
-        // Show/Hide loading overlay
         function showLoading() {
             loadingOverlay.style.display = 'flex';
         }
@@ -141,7 +96,6 @@
             loadingOverlay.style.display = 'none';
         }
 
-        // Function to get route between two points using OSRM
         async function getRoutePoints(start, end) {
             const response = await fetch(
                 `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`
@@ -154,12 +108,11 @@
             
             return {
                 points: data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]),
-                distance: data.routes[0].distance / 1000, // Convert to kilometers
-                duration: Math.round(data.routes[0].duration / 60) // Convert to minutes
+                distance: data.routes[0].distance / 1000, 
+                duration: Math.round(data.routes[0].duration / 60) 
             };
         }
 
-        // Clear previous route data
         function clearRouteData() {
             if (currentRouteLayer) {
                 map.removeLayer(currentRouteLayer);
@@ -169,7 +122,6 @@
             document.getElementById('routeDetails').innerHTML = '';
         }
 
-        // Load available instances
         fetch('/api/instances')
             .then(response => response.json())
             .then(data => {
@@ -186,13 +138,10 @@
                 alert('Şehir listesi yüklenirken bir hata oluştu: ' + error.message);
             });
 
-        // Update customer count limit when instance changes
         document.getElementById('instanceSelect').addEventListener('change', async (e) => {
             const selectedCity = e.target.value.toLowerCase();
-            clearRouteData();
             
             try {
-                showLoading();
                 const response = await fetch('/api/optimize', {
                     method: 'POST',
                     headers: {
@@ -229,11 +178,8 @@
                 }
             } catch (error) {
                 console.error('Error updating customer limit:', error);
-            } finally {
-                hideLoading();
             }
             
-            // Update map view
             if (cityCoordinates[selectedCity]) {
                 map.setView(
                     [cityCoordinates[selectedCity].lat, cityCoordinates[selectedCity].lng],
@@ -242,21 +188,20 @@
             }
         });
 
-        // Handle form submission
         document.getElementById('optimizeForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            clearRouteData(); 
             
             const optimizeBtn = document.getElementById('optimizeBtn');
-            const selectedCity = document.getElementById('instanceSelect').value.toLowerCase();
-            
-            // Clear previous data
-            clearRouteData();
+            const selectedCity = document.getElementById('instanceSelect').value;
+            const numCustomers = document.getElementById('numCustomers').value;
+            const vehicleCapacity = document.getElementById('vehicleCapacity').value;
             
             optimizeBtn.disabled = true;
             optimizeBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Rota Oluşturuluyor...';
-            showLoading();
             
             try {
+                showLoading();
                 const response = await fetch('/api/optimize', {
                     method: 'POST',
                     headers: {
@@ -265,8 +210,8 @@
                     },
                     body: JSON.stringify({
                         instance_name: selectedCity,
-                        num_customers: parseInt(document.getElementById('numCustomers').value),
-                        vehicle_capacity: parseInt(document.getElementById('vehicleCapacity').value)
+                        num_customers: parseInt(numCustomers),
+                        vehicle_capacity: parseInt(vehicleCapacity)
                     })
                 });
                 
@@ -280,7 +225,6 @@
                     throw new Error(data.error);
                 }
 
-                // Update map view for selected city
                 if (cityCoordinates[selectedCity]) {
                     map.setView(
                         [cityCoordinates[selectedCity].lat, cityCoordinates[selectedCity].lng],
@@ -289,7 +233,6 @@
                     lastSelectedCity = selectedCity;
                 }
                 
-                // Draw new route
                 const routeLayer = L.featureGroup();
                 let totalDistance = 0;
                 let totalDuration = 0;
@@ -301,12 +244,10 @@
                     let routeDuration = 0;
                     const stops = [];
                     
-                    // Add markers with numbers
                     route.forEach((point, index) => {
                         const isDepot = index === 0 || index === route.length - 1;
                         const markerNumber = isDepot ? 'D' : index;
                         
-                        // Create marker style with route color
                         const markerStyle = `
                             background-color: ${routeColor};
                             border: 2px solid white;
@@ -339,7 +280,6 @@
                         </div>`);
                     });
                     
-                    // Draw actual road routes between consecutive points
                     for (let i = 0; i < route.length - 1; i++) {
                         try {
                             const routeData = await getRoutePoints(route[i], route[i + 1]);
@@ -385,10 +325,8 @@
                 routeLayer.addTo(map);
                 currentRouteLayer = routeLayer;
                 
-                // Fit map to route bounds
                 map.fitBounds(routeLayer.getBounds(), {padding: [50, 50]});
                 
-                // Update route info
                 const routeInfo = document.getElementById('routeInfo');
                 routeInfo.innerHTML = `
                     <div class="route-details">
@@ -403,11 +341,11 @@
                     </div>
                 `;
                 
-                // Update route details
                 const routeDetails = document.getElementById('routeDetails');
                 routeDetails.innerHTML = routeDetailsHTML.join('');
                 
             } catch (error) {
+                console.error('Error:', error);
                 alert('Hata: ' + error.message);
             } finally {
                 optimizeBtn.disabled = false;

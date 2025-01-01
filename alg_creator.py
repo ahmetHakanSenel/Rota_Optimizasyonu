@@ -186,13 +186,10 @@ def create_initial_solution(instance, size, map_handler):
 def run_tabu_search(
     instance_name,
     individual_size,
-    pop_size,
     n_gen,
     tabu_size,
-    plot=False,
     stagnation_limit=20,
     verbose=True,
-    use_real_distances=True,
     early_stop_limit=60,
     vehicle_capacity=None
 ):
@@ -416,9 +413,6 @@ def evaluate_solution_with_real_distances(solution, instance, map_handler):
         print(f"Error calculating route: {str(e)}")
         return float('inf')
 
-def decode_solution(solution, instance):
-    """Çözümü rota formatına dönüştür"""
-    return [solution]  # Tek araçlı rota
 
 def evaluate_neighbors_parallel(neighbors, instance, map_handler, max_workers=4):
     """Komşu çözümleri paralel olarak değerlendir"""

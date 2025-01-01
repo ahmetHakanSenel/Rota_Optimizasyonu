@@ -20,24 +20,20 @@ if __name__ == "__main__":
         sys.exit(1)
     
     print("\nStarting VRP optimization with Tabu Search...")
-    routes = run_tabu_search(
+    res = run_tabu_search(
         instance_name=instance_name,
         individual_size=num_customers,
-        pop_size=100,
         n_gen=1200,
         tabu_size=45,
-        plot=False,
-        stagnation_limit=40,
-        verbose=True,
-        use_real_distances=True,
-        early_stop_limit=200
+        stagnation_limit=50,
+        verbose=True
     )
     
-    if routes:
+    if res:
         print("\nOptimal routes found!")
         
         # Create GraphHopper navigation link
-        nav_url = create_navigation_link(routes, instance)
+        nav_url = create_navigation_link(res, instance)
         print("\nGraphHopper Navigation Link:")
         print(nav_url)
     else:
