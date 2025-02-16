@@ -292,8 +292,8 @@ def run_tabu_search(
     current_solution = list(range(1, individual_size + 1))
     random.shuffle(current_solution)
     
-    tabu_list = AdaptiveTabuList(tabu_size * 2, tabu_size * 4)  # Tabu liste boyutunu artır
-    diversification_threshold = stagnation_limit // 2  # Daha erken çeşitlendirme
+    tabu_list = AdaptiveTabuList(tabu_size * 2, tabu_size * 4)
+    diversification_threshold = stagnation_limit // 2
     stagnation_counter = 0
     no_improvement_counter = 0
     
@@ -312,7 +312,6 @@ def run_tabu_search(
         neighbors.extend(generate_neighbors(current_solution, method="2-opt", num_neighbors=30))
         neighbors.extend(generate_neighbors(current_solution, method="insert", num_neighbors=20))
         
-        # En iyi komşuyu bul
         best_neighbor = None
         best_neighbor_fitness = float('inf')
         
@@ -417,13 +416,11 @@ def evaluate_solution_with_real_distances(solution, instance, map_handler):
 def evaluate_neighbors_parallel(neighbors, instance, map_handler, max_workers=4):
     """Komşu çözümleri paralel olarak değerlendir"""
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Tüm komşuları aynı anda değerlendir
         future_to_neighbor = {
             executor.submit(evaluate_solution_with_real_distances, n, instance, map_handler): n 
             for n in neighbors
         }
         
-        # Sonuçları topla
         valid_neighbors = []
         for future in as_completed(future_to_neighbor):
             neighbor = future_to_neighbor[future]
@@ -442,18 +439,15 @@ def generate_neighbors(solution, method="swap", num_neighbors=5):
     size = len(solution)
     
     if method == "swap":
-        # Sistematik değişimler
         for i in range(size-1):
-            for j in range(i+1, min(i+5, size)):  # Yakın noktaları değiştir
+            for j in range(i+1, min(i+5, size)):  
                 neighbor = solution.copy()
                 neighbor[i], neighbor[j] = neighbor[j], neighbor[i]
                 neighbors.append(neighbor)
     
     elif method == "insert":
-        # Akıllı ekleme
         for i in range(size):
             value = solution[i]
-            # Yakın konumlara taşı
             for j in range(max(0, i-4), min(size, i+5)):
                 if i != j:
                     neighbor = solution.copy()
@@ -462,25 +456,22 @@ def generate_neighbors(solution, method="swap", num_neighbors=5):
                     neighbors.append(neighbor)
     
     elif method == "reverse":
-        # Segment çevirme
         for i in range(size-2):
-            for length in range(2, min(6, size-i)):  # 2-5 uzunluğunda segmentler
+            for length in range(2, min(6, size-i)):  
                 neighbor = solution.copy()
                 neighbor[i:i+length] = reversed(neighbor[i:i+length])
                 neighbors.append(neighbor)
     
     elif method == "2-opt":
-        # 2-opt hareketi
         for i in range(1, size-2):
             for j in range(i+1, min(i+6, size-1)):
                 neighbor = solution.copy()
                 neighbor[i:j] = reversed(neighbor[i:j])
                 neighbors.append(neighbor)
     
-    # Rastgele seç ama en az bir tane her türden al
     if len(neighbors) > num_neighbors:
         selected = random.sample(neighbors, num_neighbors-1)
-        selected.append(random.choice(neighbors))  # Ekstra şans
+        selected.append(random.choice(neighbors))  
         return selected
     
     return neighbors
