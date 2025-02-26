@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('admin_dashboard') }}">Admin Paneli</a></li>
+            <li class="breadcrumb-item active">Yeni Şirket Ekle</li>
+        </ol>
+    </nav>
+
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card bg-dark">
+                <div class="card-header">
+                    <h5 class="mb-0">Yeni Şirket Ekle</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('add_company') }}">
+                        <!-- Şirket Bilgileri -->
+                        <h6 class="mb-3">Şirket Bilgileri</h6>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="name" class="form-label">Şirket Adı</label>
+                                <input type="text" class="form-control" id="name" name="name" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="tax_number" class="form-label">Vergi Numarası</label>
+                                <input type="text" class="form-control" id="tax_number" name="tax_number" required>
+                            </div>
+                            
+                            <div class="col-md-12 mb-3">
+                                <label for="address" class="form-label">Adres</label>
+                                <textarea class="form-control" id="address" name="address" rows="3" required></textarea>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="phone" class="form-label">Telefon</label>
+                                <input type="tel" class="form-control" id="phone" name="phone" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="email" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="email" name="email" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="max_vehicles" class="form-label">Maksimum Araç Sayısı</label>
+                                <input type="number" class="form-control" id="max_vehicles" name="max_vehicles" value="10" min="1" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="max_users" class="form-label">Maksimum Kullanıcı Sayısı</label>
+                                <input type="number" class="form-control" id="max_users" name="max_users" value="50" min="1" required>
+                            </div>
+                        </div>
+
+                        <!-- Şirket Yöneticisi Bilgileri -->
+                        <h6 class="mb-3 mt-4">Şirket Yöneticisi Bilgileri</h6>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="admin_first_name" class="form-label">Yönetici Adı</label>
+                                <input type="text" class="form-control" id="admin_first_name" name="admin_first_name" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="admin_last_name" class="form-label">Yönetici Soyadı</label>
+                                <input type="text" class="form-control" id="admin_last_name" name="admin_last_name" required>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label for="password" class="form-label">Şifre</label>
+                                <input type="password" class="form-control" id="password" name="password" required>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label for="password_confirm" class="form-label">Şifre (Tekrar)</label>
+                                <input type="password" class="form-control" id="password_confirm" name="password_confirm" required>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">İptal</a>
+                            <button type="submit" class="btn btn-primary">Şirket Ekle</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelector('form').addEventListener('submit', function(e) {
+    const password = document.getElementById('password').value;
+    const passwordConfirm = document.getElementById('password_confirm').value;
+    
+    if (password !== passwordConfirm) {
+        e.preventDefault();
+        alert('Şifreler eşleşmiyor!');
+    }
+});
+</script>
+{% endblock %} 

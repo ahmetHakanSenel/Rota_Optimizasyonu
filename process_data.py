@@ -23,12 +23,17 @@ class ProblemInstance:
     _data = None
     _current_instance = None
     
-    def __new__(cls, problem_name=None, force_recalculate=False):
+    def __new__(cls, problem_name=None, force_recalculate=False, direct_data=None):
         if cls._instance is None:
             cls._instance = super(ProblemInstance, cls).__new__(cls)
         return cls._instance
     
-    def __init__(self, problem_name=None, force_recalculate=False):
+    def __init__(self, problem_name=None, force_recalculate=False, direct_data=None):
+        if direct_data:
+            self._data = direct_data
+            self._current_instance = "direct"
+            return
+            
         if (problem_name != self._current_instance) or force_recalculate:
             self._data = None
             self._current_instance = problem_name

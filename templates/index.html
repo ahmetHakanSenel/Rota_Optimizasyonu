@@ -1,358 +1,347 @@
-<!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rota Optimizasyonu</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
-    <div class="container mt-4">
-        <h1 class="mb-4">Rota Optimizasyonu</h1>
-        
-        <div class="row">
-            <div class="col-md-4">
-                <div class="control-panel">
-                    <form id="optimizeForm">
-                        <div class="mb-3">
-                            <label for="instanceSelect" class="form-label">Şehir</label>
-                            <select class="form-select" id="instanceSelect" required>
-                            </select>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="numCustomers" class="form-label">Müşteri Sayısı</label>
-                            <input type="number" class="form-control" id="numCustomers" value="15" min="5" max="25" required>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="vehicleCapacity" class="form-label">Araç Kapasitesi</label>
-                            <input type="number" class="form-control" id="vehicleCapacity" value="500" min="100" max="1000" step="10" required>
-                        </div>
-                        
-                        <button type="submit" class="btn btn-primary" id="optimizeBtn">
-                            Rota Oluştur
-                        </button>
-                    </form>
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="control-panel">
+                <form id="optimizeForm">
+                    <div class="mb-3">
+                        <label for="instanceSelect" class="form-label">Şehir</label>
+                        <select class="form-select" id="instanceSelect" required>
+                        </select>
+                    </div>
                     
-                    <div class="route-info" style="margin-top: 25px;">
-                        <h5>Rota Bilgileri</h5>
-                        <div id="routeInfo">
-                        </div>
-                        <div id="routeDetails">
-                        </div>
+                    <div class="mb-3">
+                        <label for="numCustomers" class="form-label">Müşteri Sayısı</label>
+                        <input type="number" class="form-control" id="numCustomers" value="15" min="5" max="25" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="vehicleCapacity" class="form-label">Araç Kapasitesi</label>
+                        <input type="number" class="form-control" id="vehicleCapacity" value="500" min="100" max="1000" step="10" required>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" id="optimizeBtn">
+                        Rota Oluştur
+                    </button>
+                </form>
+                
+                <div class="route-info" style="margin-top: 25px;">
+                    <h5>Rota Bilgileri</h5>
+                    <div id="routeInfo">
+                    </div>
+                    <div id="routeDetails">
                     </div>
                 </div>
             </div>
-            
-            <div class="col-md-8">
-                <div class="map-container">
-                    <div id="map"></div>
-                    <div class="loading-overlay">
-                        <div class="spinner-container">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Yükleniyor...</span>
-                            </div>
-                            <div class="spinner-text">Rota hesaplanıyor...</div>
+        </div>
+        
+        <div class="col-md-8">
+            <div class="map-container">
+                <div id="map"></div>
+                <div class="loading-overlay">
+                    <div class="spinner-container">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Yükleniyor...</span>
                         </div>
+                        <div class="spinner-text">Rota hesaplanıyor...</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+</div>
+{% endblock %}
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script>
-        const cityCoordinates = {
-            'bursa': {lat: 40.1885, lng: 29.0610, zoom: 12},
-            'istanbul': {lat: 41.0082, lng: 28.9784, zoom: 11},
-            'izmir': {lat: 38.4192, lng: 27.1287, zoom: 12},
-            'ankara': {lat: 39.9334, lng: 32.8597, zoom: 12},
-            'tokat': {lat: 40.3167, lng: 36.5500, zoom: 13}
+{% block scripts %}
+<script>
+    const cityCoordinates = {
+        'bursa': {lat: 40.1885, lng: 29.0610, zoom: 12},
+        'istanbul': {lat: 41.0082, lng: 28.9784, zoom: 11},
+        'izmir': {lat: 38.4192, lng: 27.1287, zoom: 12},
+        'ankara': {lat: 39.9334, lng: 32.8597, zoom: 12},
+        'tokat': {lat: 40.3167, lng: 36.5500, zoom: 13}
+    };
+
+    const map = L.map('map', {
+        center: [39.0, 35.0],
+        zoom: 6,
+        minZoom: 2,
+        maxZoom: 18,
+        attributionControl: false
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    let currentRouteLayer = null;
+    let lastSelectedCity = null;
+    const loadingOverlay = document.querySelector('.loading-overlay');
+
+    function showLoading() {
+        loadingOverlay.style.display = 'flex';
+    }
+
+    function hideLoading() {
+        loadingOverlay.style.display = 'none';
+    }
+
+    async function getRoutePoints(start, end) {
+        const response = await fetch(
+            `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`
+        );
+        const data = await response.json();
+        
+        if (data.code !== 'Ok' || !data.routes || !data.routes[0]) {
+            throw new Error('Failed to get route');
+        }
+        
+        return {
+            points: data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]),
+            distance: data.routes[0].distance / 1000, 
+            duration: Math.round(data.routes[0].duration / 60) 
         };
+    }
 
-        const map = L.map('map', {
-            center: [39.0, 35.0],
-            zoom: 6,
-            minZoom: 2,
-            maxZoom: 18,
-            attributionControl: false
+    function clearRouteData() {
+        if (currentRouteLayer) {
+            map.removeLayer(currentRouteLayer);
+            currentRouteLayer = null;
+        }
+        document.getElementById('routeInfo').innerHTML = '';
+        document.getElementById('routeDetails').innerHTML = '';
+    }
+
+    fetch('/api/instances')
+        .then(response => response.json())
+        .then(data => {
+            const select = document.getElementById('instanceSelect');
+            data.instances.forEach(instance => {
+                const option = document.createElement('option');
+                option.value = instance;
+                option.textContent = instance.charAt(0).toUpperCase() + instance.slice(1);
+                select.appendChild(option);
+            });
+        })
+        .catch(error => {
+            console.error('Error loading instances:', error);
+            alert('Şehir listesi yüklenirken bir hata oluştu: ' + error.message);
         });
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-        let currentRouteLayer = null;
-        let lastSelectedCity = null;
-        const loadingOverlay = document.querySelector('.loading-overlay');
-
-        function showLoading() {
-            loadingOverlay.style.display = 'flex';
-        }
-
-        function hideLoading() {
-            loadingOverlay.style.display = 'none';
-        }
-
-        async function getRoutePoints(start, end) {
-            const response = await fetch(
-                `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`
-            );
+    document.getElementById('instanceSelect').addEventListener('change', async (e) => {
+        const selectedCity = e.target.value.toLowerCase();
+        
+        try {
+            const response = await fetch('/api/optimize', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    instance_name: selectedCity,
+                    num_customers: 1,
+                    vehicle_capacity: parseInt(document.getElementById('vehicleCapacity').value)
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Müşteri sayısı bilgisi alınamadı');
+            }
+            
             const data = await response.json();
             
-            if (data.code !== 'Ok' || !data.routes || !data.routes[0]) {
-                throw new Error('Failed to get route');
-            }
-            
-            return {
-                points: data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]),
-                distance: data.routes[0].distance / 1000, 
-                duration: Math.round(data.routes[0].duration / 60) 
-            };
-        }
-
-        function clearRouteData() {
-            if (currentRouteLayer) {
-                map.removeLayer(currentRouteLayer);
-                currentRouteLayer = null;
-            }
-            document.getElementById('routeInfo').innerHTML = '';
-            document.getElementById('routeDetails').innerHTML = '';
-        }
-
-        fetch('/api/instances')
-            .then(response => response.json())
-            .then(data => {
-                const select = document.getElementById('instanceSelect');
-                data.instances.forEach(instance => {
-                    const option = document.createElement('option');
-                    option.value = instance;
-                    option.textContent = instance.charAt(0).toUpperCase() + instance.slice(1);
-                    select.appendChild(option);
-                });
-            })
-            .catch(error => {
-                console.error('Error loading instances:', error);
-                alert('Şehir listesi yüklenirken bir hata oluştu: ' + error.message);
-            });
-
-        document.getElementById('instanceSelect').addEventListener('change', async (e) => {
-            const selectedCity = e.target.value.toLowerCase();
-            
-            try {
-                const response = await fetch('/api/optimize', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        instance_name: selectedCity,
-                        num_customers: 1,
-                        vehicle_capacity: parseInt(document.getElementById('vehicleCapacity').value)
-                    })
-                });
-                
-                if (!response.ok) {
-                    throw new Error('Müşteri sayısı bilgisi alınamadı');
-                }
-                
-                const data = await response.json();
-                
-                if (data.error) {
-                    if (data.error.includes('instance only has')) {
-                        const match = data.error.match(/instance only has (\d+) customers/);
-                        if (match) {
-                            const maxCustomers = parseInt(match[1]);
-                            const numCustomersInput = document.getElementById('numCustomers');
-                            numCustomersInput.max = maxCustomers;
-                            // Set a reasonable default value (half of max or 15, whichever is smaller)
-                            const defaultValue = Math.min(Math.ceil(maxCustomers / 2), 15);
-                            numCustomersInput.value = defaultValue;
-                        }
-                    } else {
-                        console.error('Error:', data.error);
+            if (data.error) {
+                if (data.error.includes('instance only has')) {
+                    const match = data.error.match(/instance only has (\d+) customers/);
+                    if (match) {
+                        const maxCustomers = parseInt(match[1]);
+                        const numCustomersInput = document.getElementById('numCustomers');
+                        numCustomersInput.max = maxCustomers;
+                        const defaultValue = Math.min(Math.ceil(maxCustomers / 2), 15);
+                        numCustomersInput.value = defaultValue;
                     }
+                } else {
+                    console.error('Error:', data.error);
                 }
-            } catch (error) {
-                console.error('Error updating customer limit:', error);
+            }
+        } catch (error) {
+            console.error('Error updating customer limit:', error);
+        }
+        
+        if (cityCoordinates[selectedCity]) {
+            map.setView(
+                [cityCoordinates[selectedCity].lat, cityCoordinates[selectedCity].lng],
+                cityCoordinates[selectedCity].zoom
+            );
+        }
+    });
+
+    document.getElementById('optimizeForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        clearRouteData(); 
+        
+        const optimizeBtn = document.getElementById('optimizeBtn');
+        const selectedCity = document.getElementById('instanceSelect').value;
+        const numCustomers = document.getElementById('numCustomers').value;
+        const vehicleCapacity = document.getElementById('vehicleCapacity').value;
+        
+        optimizeBtn.disabled = true;
+        optimizeBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Rota Oluşturuluyor...';
+        
+        try {
+            showLoading();
+            const response = await fetch('/api/optimize', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    instance_name: selectedCity,
+                    num_customers: parseInt(numCustomers),
+                    vehicle_capacity: parseInt(vehicleCapacity)
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Optimizasyon sırasında bir hata oluştu');
             }
             
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
             if (cityCoordinates[selectedCity]) {
                 map.setView(
                     [cityCoordinates[selectedCity].lat, cityCoordinates[selectedCity].lng],
                     cityCoordinates[selectedCity].zoom
                 );
+                lastSelectedCity = selectedCity;
             }
-        });
-
-        document.getElementById('optimizeForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            clearRouteData(); 
             
-            const optimizeBtn = document.getElementById('optimizeBtn');
-            const selectedCity = document.getElementById('instanceSelect').value;
-            const numCustomers = document.getElementById('numCustomers').value;
-            const vehicleCapacity = document.getElementById('vehicleCapacity').value;
+            const routeLayer = L.featureGroup();
+            let totalDistance = 0;
+            let totalDuration = 0;
+            const routeDetailsHTML = [];
             
-            optimizeBtn.disabled = true;
-            optimizeBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Rota Oluşturuluyor...';
-            
-            try {
-                showLoading();
-                const response = await fetch('/api/optimize', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        instance_name: selectedCity,
-                        num_customers: parseInt(numCustomers),
-                        vehicle_capacity: parseInt(vehicleCapacity)
-                    })
+            for (const [routeIndex, route] of data.routes.entries()) {
+                const routeColor = `hsl(${routeIndex * 137.508}deg 50% 50%)`;
+                let routeDistance = 0;
+                let routeDuration = 0;
+                const stops = [];
+                
+                route.forEach((point, index) => {
+                    const isDepot = index === 0 || index === route.length - 1;
+                    const markerNumber = isDepot ? 'D' : index;
+                    
+                    const markerStyle = `
+                        background-color: ${routeColor};
+                        border: 2px solid white;
+                        border-radius: 50%;
+                        width: ${isDepot ? '32' : '24'}px;
+                        height: ${isDepot ? '32' : '24'}px;
+                        margin-left: ${isDepot ? '-16' : '-12'}px;
+                        margin-top: ${isDepot ? '-16' : '-12'}px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: white;
+                        font-weight: bold;
+                        font-size: ${isDepot ? '14' : '12'}px;
+                    `;
+                    
+                    const marker = L.marker([point.lat, point.lng], {
+                        icon: L.divIcon({
+                            className: isDepot ? 'depot-marker' : 'customer-marker',
+                            html: `<div style="${markerStyle}">${markerNumber}</div>`
+                        })
+                    }).bindPopup(`
+                        <strong>${point.name}</strong><br>
+                        Stop #${index + 1}
+                    `);
+                    
+                    marker.addTo(routeLayer);
+                    stops.push(`<div class="route-stop">
+                        <strong>${index + 1}.</strong> ${point.name}
+                    </div>`);
                 });
                 
-                if (!response.ok) {
-                    throw new Error('Optimizasyon sırasında bir hata oluştu');
-                }
-                
-                const data = await response.json();
-                
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-
-                if (cityCoordinates[selectedCity]) {
-                    map.setView(
-                        [cityCoordinates[selectedCity].lat, cityCoordinates[selectedCity].lng],
-                        cityCoordinates[selectedCity].zoom
-                    );
-                    lastSelectedCity = selectedCity;
-                }
-                
-                const routeLayer = L.featureGroup();
-                let totalDistance = 0;
-                let totalDuration = 0;
-                const routeDetailsHTML = [];
-                
-                for (const [routeIndex, route] of data.routes.entries()) {
-                    const routeColor = `hsl(${routeIndex * 137.508}deg 50% 50%)`;
-                    let routeDistance = 0;
-                    let routeDuration = 0;
-                    const stops = [];
-                    
-                    route.forEach((point, index) => {
-                        const isDepot = index === 0 || index === route.length - 1;
-                        const markerNumber = isDepot ? 'D' : index;
+                for (let i = 0; i < route.length - 1; i++) {
+                    try {
+                        const routeData = await getRoutePoints(route[i], route[i + 1]);
+                        L.polyline(routeData.points, {
+                            color: routeColor,
+                            weight: 3,
+                            opacity: 0.8
+                        }).addTo(routeLayer);
                         
-                        const markerStyle = `
-                            background-color: ${routeColor};
-                            border: 2px solid white;
-                            border-radius: 50%;
-                            width: ${isDepot ? '32' : '24'}px;
-                            height: ${isDepot ? '32' : '24'}px;
-                            margin-left: ${isDepot ? '-16' : '-12'}px;
-                            margin-top: ${isDepot ? '-16' : '-12'}px;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            color: white;
-                            font-weight: bold;
-                            font-size: ${isDepot ? '14' : '12'}px;
-                        `;
+                        routeDistance += routeData.distance;
+                        routeDuration += routeData.duration;
                         
-                        const marker = L.marker([point.lat, point.lng], {
-                            icon: L.divIcon({
-                                className: isDepot ? 'depot-marker' : 'customer-marker',
-                                html: `<div style="${markerStyle}">${markerNumber}</div>`
-                            })
-                        }).bindPopup(`
-                            <strong>${point.name}</strong><br>
-                            Stop #${index + 1}
-                        `);
-                        
-                        marker.addTo(routeLayer);
-                        stops.push(`<div class="route-stop">
-                            <strong>${index + 1}.</strong> ${point.name}
-                        </div>`);
-                    });
-                    
-                    for (let i = 0; i < route.length - 1; i++) {
-                        try {
-                            const routeData = await getRoutePoints(route[i], route[i + 1]);
-                            L.polyline(routeData.points, {
-                                color: routeColor,
-                                weight: 3,
-                                opacity: 0.8
-                            }).addTo(routeLayer);
-                            
-                            routeDistance += routeData.distance;
-                            routeDuration += routeData.duration;
-                            
-                        } catch (error) {
-                            console.error('Failed to get route segment:', error);
-                            L.polyline([[route[i].lat, route[i].lng], [route[i + 1].lat, route[i + 1].lng]], {
-                                color: routeColor,
-                                weight: 3,
-                                opacity: 0.8,
-                                dashArray: '5, 10'
-                            }).addTo(routeLayer);
-                        }
-                        await new Promise(resolve => setTimeout(resolve, 200));
+                    } catch (error) {
+                        console.error('Failed to get route segment:', error);
+                        L.polyline([[route[i].lat, route[i].lng], [route[i + 1].lat, route[i + 1].lng]], {
+                            color: routeColor,
+                            weight: 3,
+                            opacity: 0.8,
+                            dashArray: '5, 10'
+                        }).addTo(routeLayer);
                     }
-                    
-                    totalDistance += routeDistance;
-                    totalDuration += routeDuration;
-                    
-                    routeDetailsHTML.push(`
-                        <div class="route-details">
-                            <h6>Rota ${routeIndex + 1}</h6>
-                            <p>
-                                Mesafe: ${routeDistance.toFixed(1)} km<br>
-                                Tahmini Süre: ${Math.floor(routeDuration / 60)}h ${Math.round(routeDuration % 60)}m<br>
-                                Araç Yükü: ${route.reduce((sum, point) => sum + (point.demand || 0), 0)} / ${data.vehicle_capacity}
-                            </p>
-                            <div class="route-stops">
-                                ${stops.join('')}
-                            </div>
-                        </div>
-                    `);
+                    await new Promise(resolve => setTimeout(resolve, 200));
                 }
                 
-                routeLayer.addTo(map);
-                currentRouteLayer = routeLayer;
+                totalDistance += routeDistance;
+                totalDuration += routeDuration;
                 
-                map.fitBounds(routeLayer.getBounds(), {padding: [50, 50]});
-                
-                const routeInfo = document.getElementById('routeInfo');
-                routeInfo.innerHTML = `
+                routeDetailsHTML.push(`
                     <div class="route-details">
-                        <h6>Rota Özeti</h6>
+                        <h6>Rota ${routeIndex + 1}</h6>
                         <p>
-                            Toplam Rota (Araç): ${data.routes.length}<br>
-                            Toplam Durak: ${data.routes.reduce((sum, route) => sum + route.length - 2, 0)}<br>
-                            Toplam Mesafe: ${totalDistance.toFixed(1)} km<br>
-                            Tahmini Süre: ${Math.floor(totalDuration / 60)}h ${Math.round(totalDuration % 60)}m<br>
-                            Araç Kapasitesi: ${data.vehicle_capacity}
+                            Mesafe: ${routeDistance.toFixed(1)} km<br>
+                            Tahmini Süre: ${Math.floor(routeDuration / 60)}h ${Math.round(routeDuration % 60)}m<br>
+                            Araç Yükü: ${route.reduce((sum, point) => sum + (point.demand || 0), 0)} / ${data.vehicle_capacity}
                         </p>
+                        <div class="route-stops">
+                            ${stops.join('')}
+                        </div>
                     </div>
-                `;
-                
-                const routeDetails = document.getElementById('routeDetails');
-                routeDetails.innerHTML = routeDetailsHTML.join('');
-                
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Hata: ' + error.message);
-            } finally {
-                optimizeBtn.disabled = false;
-                optimizeBtn.textContent = 'Rota Oluştur';
-                hideLoading();
+                `);
             }
-        });
-    </script>
-</body>
-</html> 
+            
+            routeLayer.addTo(map);
+            currentRouteLayer = routeLayer;
+            
+            map.fitBounds(routeLayer.getBounds(), {padding: [50, 50]});
+            
+            const routeInfo = document.getElementById('routeInfo');
+            routeInfo.innerHTML = `
+                <div class="route-details">
+                    <h6>Rota Özeti</h6>
+                    <p>
+                        Toplam Rota (Araç): ${data.routes.length}<br>
+                        Toplam Durak: ${data.routes.reduce((sum, route) => sum + route.length - 2, 0)}<br>
+                        Toplam Mesafe: ${totalDistance.toFixed(1)} km<br>
+                        Tahmini Süre: ${Math.floor(totalDuration / 60)}h ${Math.round(totalDuration % 60)}m<br>
+                        Araç Kapasitesi: ${data.vehicle_capacity}
+                    </p>
+                </div>
+            `;
+            
+            const routeDetails = document.getElementById('routeDetails');
+            routeDetails.innerHTML = routeDetailsHTML.join('');
+            
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Hata: ' + error.message);
+        } finally {
+            optimizeBtn.disabled = false;
+            optimizeBtn.textContent = 'Rota Oluştur';
+            hideLoading();
+        }
+    });
+</script>
+{% endblock %} 

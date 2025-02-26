@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Admin Paneli</h2>
+        <a href="{{ url_for('add_company') }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Yeni Şirket Ekle
+        </a>
+    </div>
+
+    <div class="row">
+        {% for company in companies %}
+        <div class="col-md-6 mb-4">
+            <div class="card bg-dark">
+                <div class="card-body">
+                    <h5 class="card-title">{{ company.name }}</h5>
+                    <p class="card-text">
+                        <small class="text-muted">Vergi No: {{ company.tax_number }}</small><br>
+                        <i class="bi bi-geo-alt"></i> {{ company.address }}<br>
+                        <i class="bi bi-telephone"></i> {{ company.phone }}<br>
+                        <i class="bi bi-envelope"></i> {{ company.email }}
+                    </p>
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <div>
+                            <span class="badge bg-primary me-2">{{ company.max_vehicles }} Araç</span>
+                            <span class="badge bg-info">{{ company.max_users }} Kullanıcı</span>
+                        </div>
+                        <div class="btn-group">
+                            <a href="{{ url_for('company_details', company_id=company.id) }}" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-eye"></i> Detaylar
+                            </a>
+                            <a href="{{ url_for('edit_company', company_id=company.id) }}" class="btn btn-outline-warning btn-sm">
+                                <i class="bi bi-pencil"></i> Düzenle
+                            </a>
+                            <button type="button" class="btn btn-outline-danger btn-sm delete-company" 
+                                    data-id="{{ company.id }}" data-name="{{ company.name }}">
+                                <i class="bi bi-trash"></i> Sil
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Şirket Silme Modal -->
+<div class="modal fade" id="deleteCompanyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Şirket Sil</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bu şirketi ve tüm ilişkili verileri silmek istediğinizden emin misiniz?</p>
+                <p class="text-danger" id="deleteCompanyName"></p>
+                <p class="text-warning">Bu işlem geri alınamaz!</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <form id="deleteCompanyForm" method="POST">
+                    <button type="submit" class="btn btn-danger">Sil</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.delete-company').forEach(button => {
+        button.addEventListener('click', function() {
+            const companyId = this.dataset.id;
+            const companyName = this.dataset.name;
+            deleteCompany(companyId, companyName);
+        });
+    });
+});
+
+function deleteCompany(companyId, companyName) {
+    const modal = new bootstrap.Modal(document.getElementById('deleteCompanyModal'));
+    document.getElementById('deleteCompanyName').textContent = companyName;
+    document.getElementById('deleteCompanyForm').action = `/admin/company/${companyId}/delete`;
+    modal.show();
+}
+</script>
+{% endblock %} 

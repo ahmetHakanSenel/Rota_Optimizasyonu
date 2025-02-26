@@ -1,0 +1,892 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>{{ company.name }} Yönetim Paneli</h2>
+    </div>
+
+    <div class="row">
+        <!-- Şirket Bilgileri -->
+        <div class="col-md-4 mb-4">
+            <div class="card bg-dark">
+                <div class="card-header">
+                    <h5 class="mb-0">Şirket Bilgileri</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Vergi No:</strong> {{ company.tax_number }}</p>
+                    <p><strong>Adres:</strong> {{ company.address }}</p>
+                    <p><strong>Telefon:</strong> {{ company.phone }}</p>
+                    <p><strong>Email:</strong> {{ company.email }}</p>
+                    <p><strong>Araç Sayısı:</strong> {{ vehicles|length }} / {{ company.max_vehicles }}</p>
+                    <p><strong>Kullanıcı Sayısı:</strong> {{ employees|length }} / {{ company.max_users }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Müşteriler -->
+        <div class="col-md-8 mb-4">
+            <div class="card bg-dark">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Müşteriler</h5>
+                    <a href="{{ url_for('add_customer') }}" class="btn btn-primary btn-sm">
+                        <i class="bi bi-plus-lg"></i> Yeni Müşteri
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Ad</th>
+                                    <th>Adres</th>
+                                    <th>İletişim</th>
+                                    <th>Desi</th>
+                                    <th>Öncelik</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for customer in customers %}
+                                <tr>
+                                    <td>{{ customer.name }}</td>
+                                    <td>
+                                        {{ customer.address }}<br>
+                                        <small class="text-muted">
+                                            ({{ customer.latitude }}, {{ customer.longitude }})
+                                        </small>
+                                    </td>
+                                    <td>
+                                        {{ customer.contact_person }}<br>
+                                        {{ customer.contact_phone }}<br>
+                                        <small>{{ customer.email }}</small>
+                                    </td>
+                                    <td>{{ "%.2f"|format(customer.desi|float) }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'danger' if customer.priority > 7 else 'warning' if customer.priority > 4 else 'info' }}">
+                                            {{ customer.priority }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{{ url_for('edit_customer', customer_id=customer.id) }}" class="btn btn-warning">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            <button type="button" class="btn btn-danger delete-customer" 
+                                                    data-id="{{ customer.id }}" data-name="{{ customer.name }}">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Araçlar -->
+        <div class="col-md-6 mb-4">
+            <div class="card bg-dark">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Araçlar</h5>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addVehicleModal">
+                        <i class="bi bi-plus-lg"></i> Yeni Araç
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Plaka</th>
+                                    <th>Model</th>
+                                    <th>Kapasite</th>
+                                    <th>Şoför</th>
+                                    <th>Durum</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for vehicle in vehicles %}
+                                <tr>
+                                    <td>{{ vehicle.plate_number }}</td>
+                                    <td>{{ vehicle.brand }} {{ vehicle.model }}</td>
+                                    <td>{{ vehicle.capacity }}</td>
+                                    <td>
+                                        {% if vehicle.driver %}
+                                            {{ vehicle.driver.user.first_name }} {{ vehicle.driver.user.last_name }}
+                                        {% else %}
+                                            <span class="text-muted">Atanmamış</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if vehicle.status.value == 'active' else 'warning' if vehicle.status.value == 'maintenance' else 'danger' }}">
+                                            {{ vehicle.status.value }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-warning edit-vehicle" data-id="{{ vehicle.id }}">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-danger delete-vehicle" data-id="{{ vehicle.id }}">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Şoförler -->
+        <div class="col-md-6 mb-4">
+            <div class="card bg-dark">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Şoförler</h5>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addDriverModal">
+                        <i class="bi bi-plus-lg"></i> Yeni Şoför
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Ad Soyad</th>
+                                    <th>Ehliyet No</th>
+                                    <th>Deneyim</th>
+                                    <th>Durum</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for driver in drivers %}
+                                <tr>
+                                    <td>{{ driver.user.first_name }} {{ driver.user.last_name }}</td>
+                                    <td>{{ driver.license_number }}</td>
+                                    <td>{{ driver.total_experience_years }} yıl</td>
+                                    <td>
+                                        <span class="badge bg-success">Aktif</span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-warning edit-driver" data-id="{{ driver.id }}">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-danger delete-driver" data-id="{{ driver.id }}">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Depolar -->
+        <div class="col-md-6 mb-4">
+            <div class="card bg-dark">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Depolar</h5>
+                    <a href="{{ url_for('company_add_warehouse') }}" class="btn btn-primary btn-sm">
+                        <i class="bi bi-plus-lg"></i> Yeni Depo
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Ad</th>
+                                    <th>Adres</th>
+                                    <th>Kapasite</th>
+                                    <th>Durum</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for warehouse in warehouses %}
+                                <tr>
+                                    <td>{{ warehouse.name }}</td>
+                                    <td>
+                                        {{ warehouse.address }}<br>
+                                        <small class="text-muted">
+                                            ({{ warehouse.latitude }}, {{ warehouse.longitude }})
+                                        </small>
+                                    </td>
+                                    <td>{{ warehouse.capacity }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if warehouse.is_active else 'danger' }}">
+                                            {{ 'Aktif' if warehouse.is_active else 'Pasif' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{{ url_for('company_edit_warehouse', warehouse_id=warehouse.id) }}" 
+                                               class="btn btn-warning">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            <button type="button" class="btn btn-danger delete-warehouse" 
+                                                    data-id="{{ warehouse.id }}" data-name="{{ warehouse.name }}">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rotalar -->
+        <div class="col-md-12 mb-4">
+            <div class="card bg-dark">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Rotalar</h5>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createRouteModal">
+                        <i class="bi bi-plus-lg"></i> Yeni Rota Oluştur
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Tarih</th>
+                                    <th>Şoför</th>
+                                    <th>Araç</th>
+                                    <th>Duraklar</th>
+                                    <th>Toplam Desi</th>
+                                    <th>Mesafe</th>
+                                    <th>Durum</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for route in routes %}
+                                <tr>
+                                    <td>{{ route.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                                    <td>
+                                        {% if route.driver %}
+                                            {{ route.driver.user.first_name }} {{ route.driver.user.last_name }}
+                                        {% else %}
+                                            <span class="text-muted">Atanmamış</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if route.vehicle %}
+                                            {{ route.vehicle.plate_number }}
+                                        {% else %}
+                                            <span class="text-muted">Atanmamış</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ route.route_details|length }}</td>
+                                    <td>{{ "%.2f"|format(route.total_demand|float) }}</td>
+                                    <td>{{ "%.1f"|format(route.total_distance|float) }} km</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if route.status.value == 'completed' 
+                                            else 'warning' if route.status.value == 'in_progress' 
+                                            else 'danger' if route.status.value == 'cancelled'
+                                            else 'info' }}">
+                                            {{ route.status.value }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-primary view-route" data-id="{{ route.id }}">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                            <button class="btn btn-warning edit-route" data-id="{{ route.id }}">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            {% if route.status.value == 'planned' %}
+                                            <button class="btn btn-danger delete-route" data-id="{{ route.id }}" onclick="deleteRoute({{ route.id }})">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Müşteri Silme Modal -->
+<div class="modal fade" id="deleteCustomerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Müşteri Sil</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bu müşteriyi silmek istediğinizden emin misiniz?</p>
+                <p class="text-danger" id="deleteCustomerName"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <form id="deleteCustomerForm" method="POST">
+                    <button type="submit" class="btn btn-danger">Sil</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Yeni Araç Modal -->
+<div class="modal fade" id="addVehicleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Yeni Araç Ekle</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addVehicleForm">
+                    <div class="mb-3">
+                        <label for="plate_number" class="form-label">Plaka</label>
+                        <input type="text" class="form-control" id="plate_number" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="brand" class="form-label">Marka</label>
+                        <input type="text" class="form-control" id="brand" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="model" class="form-label">Model</label>
+                        <input type="text" class="form-control" id="model" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="capacity" class="form-label">Kapasite</label>
+                        <input type="number" class="form-control" id="capacity" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="driver_id" class="form-label">Şoför</label>
+                        <select class="form-select" id="driver_id">
+                            <option value="">Şoför Seçin</option>
+                            {% for driver in drivers %}
+                                {% if not driver.vehicle %}
+                                    <option value="{{ driver.id }}">{{ driver.user.first_name }} {{ driver.user.last_name }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <button type="button" class="btn btn-primary" onclick="saveVehicle()">Kaydet</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Yeni Şoför Modal -->
+<div class="modal fade" id="addDriverModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Yeni Şoför Ekle</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addDriverForm">
+                    <div class="mb-3">
+                        <label for="first_name" class="form-label">Ad</label>
+                        <input type="text" class="form-control" id="first_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="last_name" class="form-label">Soyad</label>
+                        <input type="text" class="form-control" id="last_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Şifre</label>
+                        <input type="password" class="form-control" id="password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password_confirm" class="form-label">Şifre (Tekrar)</label>
+                        <input type="password" class="form-control" id="password_confirm" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="license_number" class="form-label">Ehliyet No</label>
+                        <input type="text" class="form-control" id="license_number" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="experience" class="form-label">Deneyim (Yıl)</label>
+                        <input type="number" class="form-control" id="experience" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <button type="button" class="btn btn-primary" onclick="saveDriver()">Kaydet</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rota Oluşturma Modal -->
+<div class="modal fade" id="createRouteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Yeni Rota Oluştur</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createRouteForm">
+                    <div class="mb-3">
+                        <label for="numCustomers" class="form-label">Müşteri Sayısı</label>
+                        <input type="number" class="form-control" id="numCustomers" 
+                               min="2" max="15" value="5" required>
+                        <div class="form-text">En az 2, en fazla 15 müşteri seçilebilir.</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <button type="button" class="btn btn-primary" id="createRouteBtn">
+                    Rota Oluştur
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rota Detay Modal -->
+<div class="modal fade" id="routeDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Rota Detayları</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="routeMap" style="height: 400px; margin-bottom: 20px;"></div>
+                <div id="routeInfo"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Depo Silme Modal -->
+<div class="modal fade" id="deleteWarehouseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Depo Sil</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bu depoyu silmek istediğinizden emin misiniz?</p>
+                <p class="text-danger" id="deleteWarehouseName"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <form id="deleteWarehouseForm" method="POST">
+                    <button type="submit" class="btn btn-danger">Sil</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Event Listeners
+document.addEventListener('DOMContentLoaded', function() {
+    // Müşteri işlemleri
+    document.querySelectorAll('.delete-customer').forEach(button => {
+        button.addEventListener('click', function() {
+            const customerId = this.dataset.id;
+            const customerName = this.dataset.name;
+            deleteCustomer(customerId, customerName);
+        });
+    });
+
+    // Araç işlemleri
+    document.querySelectorAll('.edit-vehicle').forEach(button => {
+        button.addEventListener('click', function() {
+            editVehicle(this.dataset.id);
+        });
+    });
+
+    document.querySelectorAll('.delete-vehicle').forEach(button => {
+        button.addEventListener('click', function() {
+            deleteVehicle(this.dataset.id);
+        });
+    });
+
+    // Şoför işlemleri
+    document.querySelectorAll('.edit-driver').forEach(button => {
+        button.addEventListener('click', function() {
+            editDriver(this.dataset.id);
+        });
+    });
+
+    document.querySelectorAll('.delete-driver').forEach(button => {
+        button.addEventListener('click', function() {
+            deleteDriver(this.dataset.id);
+        });
+    });
+
+    // Rota işlemleri
+    document.querySelectorAll('.view-route').forEach(button => {
+        button.addEventListener('click', function() {
+            showRouteDetails(this.dataset.id);
+        });
+    });
+
+    // Depo işlemleri
+    document.querySelectorAll('.delete-warehouse').forEach(button => {
+        button.addEventListener('click', function() {
+            const warehouseId = this.dataset.id;
+            const warehouseName = this.dataset.name;
+            deleteWarehouse(warehouseId, warehouseName);
+        });
+    });
+});
+
+function deleteCustomer(customerId, customerName) {
+    const modal = new bootstrap.Modal(document.getElementById('deleteCustomerModal'));
+    document.getElementById('deleteCustomerName').textContent = customerName;
+    document.getElementById('deleteCustomerForm').action = `/company/customer/${customerId}/delete`;
+    modal.show();
+}
+
+function editVehicle(vehicleId) {
+    fetch(`/company/vehicle/${vehicleId}`)
+        .then(response => response.json())
+        .then(vehicle => {
+            document.getElementById('plate_number').value = vehicle.plate_number;
+            document.getElementById('brand').value = vehicle.brand;
+            document.getElementById('model').value = vehicle.model;
+            document.getElementById('capacity').value = vehicle.capacity;
+            document.getElementById('driver_id').value = vehicle.driver_id || '';
+            
+            const modal = new bootstrap.Modal(document.getElementById('addVehicleModal'));
+            document.querySelector('#addVehicleModal .modal-title').textContent = 'Araç Düzenle';
+            document.querySelector('#addVehicleModal .btn-primary').onclick = () => saveVehicle(vehicleId);
+            modal.show();
+        });
+}
+
+function deleteVehicle(vehicleId) {
+    if (confirm('Bu aracı silmek istediğinizden emin misiniz?')) {
+        fetch(`/company/vehicle/${vehicleId}/delete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            }
+        });
+    }
+}
+
+function editDriver(driverId) {
+    // TODO: Implement driver editing
+    alert('Şoför düzenleme özelliği yakında eklenecek!');
+}
+
+function deleteDriver(driverId) {
+    if (confirm('Bu şoförü silmek istediğinizden emin misiniz?')) {
+        // TODO: Implement driver deletion
+        alert('Şoför silme özelliği yakında eklenecek!');
+    }
+}
+
+function saveVehicle(vehicleId = null) {
+    const data = {
+        plate_number: document.getElementById('plate_number').value,
+        brand: document.getElementById('brand').value,
+        model: document.getElementById('model').value,
+        capacity: document.getElementById('capacity').value,
+        driver_id: document.getElementById('driver_id').value || null
+    };
+
+    const url = vehicleId ? `/company/vehicle/${vehicleId}/edit` : '/company/vehicle/add';
+    
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        }
+    });
+}
+
+function saveDriver() {
+    const password = document.getElementById('password').value;
+    const passwordConfirm = document.getElementById('password_confirm').value;
+    
+    if (password !== passwordConfirm) {
+        alert('Şifreler eşleşmiyor!');
+        return;
+    }
+
+    const data = {
+        first_name: document.getElementById('first_name').value,
+        last_name: document.getElementById('last_name').value,
+        email: document.getElementById('email').value,
+        password: password,
+        license_number: document.getElementById('license_number').value,
+        experience: parseInt(document.getElementById('experience').value)
+    };
+
+    fetch('/company/driver/add', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Giriş bilgilerini göster
+            alert(`Şoför başarıyla eklendi!\n\nGiriş bilgileri:\nEmail: ${data.credentials.email}\nŞifre: ${data.credentials.password}`);
+            location.reload();
+        } else {
+            alert('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu'));
+        }
+    })
+    .catch(error => {
+        alert('Hata: ' + error.message);
+    });
+}
+
+document.getElementById('createRouteBtn').addEventListener('click', async function() {
+    const button = this;
+    const numCustomers = document.getElementById('numCustomers').value;
+    
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm"></span> İşleniyor...';
+    
+    try {
+        const response = await fetch('/api/optimize', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                num_customers: parseInt(numCustomers)
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Show success message
+            const message = `${data.message || 'Rotalar başarıyla oluşturuldu.'}\n\n` + 
+                          data.routes.map((route, index) => {
+                              const totalDemand = route.total_demand || 0;
+                              return `Rota ${index + 1}:\n` +
+                                    `Durak Sayısı: ${route.points.length - 2}\n` + // Başlangıç ve bitiş depoları çıkarılıyor
+                                    `Toplam Yük: ${totalDemand.toFixed(2)}`;
+                          }).join('\n\n');
+                          
+            alert(message);
+            location.reload();  // Refresh page to show new routes
+        } else {
+            alert('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu'));
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Bir hata oluştu: ' + error.message);
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Rota Oluştur';
+        bootstrap.Modal.getInstance(document.getElementById('createRouteModal')).hide();
+    }
+});
+
+let routeMap = null;
+let routeMarkers = [];
+let routePolylines = [];
+
+function showRouteDetails(routeId) {
+    const modal = new bootstrap.Modal(document.getElementById('routeDetailsModal'));
+    modal.show();
+    
+    document.getElementById('routeDetailsModal').addEventListener('shown.bs.modal', function () {
+        if (!routeMap) {
+            routeMap = L.map('routeMap');
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(routeMap);
+        }
+        
+        routeMarkers.forEach(marker => routeMap.removeLayer(marker));
+        routePolylines.forEach(line => routeMap.removeLayer(line));
+        routeMarkers = [];
+        routePolylines = [];
+        
+        fetch(`/api/route/${routeId}`)
+            .then(response => response.json())
+            .then(data => {
+                const bounds = L.latLngBounds();
+                
+                // Depo
+                if (data.warehouse) {
+                    const depot = L.marker(
+                        [data.warehouse.latitude, data.warehouse.longitude],
+                        {
+                            icon: L.divIcon({
+                                className: 'depot-marker',
+                                html: '<div style="background-color: #198754;">D</div>'
+                            })
+                        }
+                    ).bindPopup(`
+                        <strong>${data.warehouse.name}</strong><br>
+                        ${data.warehouse.address}
+                    `);
+                    
+                    routeMarkers.push(depot);
+                    depot.addTo(routeMap);
+                    bounds.extend([data.warehouse.latitude, data.warehouse.longitude]);
+                }
+                
+                // Duraklar
+                data.stops.forEach((stop, index) => {
+                    const marker = L.marker(
+                        [stop.customer.latitude, stop.customer.longitude],
+                        {
+                            icon: L.divIcon({
+                                className: 'customer-marker',
+                                html: `<div style="background-color: ${getStatusColor(stop.status)};">${index + 1}</div>`
+                            })
+                        }
+                    ).bindPopup(`
+                        <strong>${stop.customer.name}</strong><br>
+                        ${stop.customer.address}<br>
+                        <small>
+                            <strong>İletişim:</strong> ${stop.customer.contact_person}<br>
+                            <strong>Telefon:</strong> ${stop.customer.contact_phone}<br>
+                            <strong>Desi:</strong> ${stop.demand}<br>
+                            <strong>Durum:</strong> ${getStatusText(stop.status)}
+                        </small>
+                    `);
+                    
+                    routeMarkers.push(marker);
+                    marker.addTo(routeMap);
+                    bounds.extend([stop.customer.latitude, stop.customer.longitude]);
+                });
+                
+                routeMap.fitBounds(bounds, { padding: [50, 50] });
+                routeMap.invalidateSize();
+                
+                // Rota bilgileri
+                document.getElementById('routeInfo').innerHTML = `
+                    <div class="route-details">
+                        <h6>Rota Bilgileri</h6>
+                        <p>
+                            <strong>Şoför:</strong> ${data.driver ? `${data.driver.user.first_name} ${data.driver.user.last_name}` : 'Atanmamış'}<br>
+                            <strong>Araç:</strong> ${data.vehicle ? data.vehicle.plate_number : 'Atanmamış'}<br>
+                            <strong>Toplam Mesafe:</strong> ${data.total_distance?.toFixed(1)} km<br>
+                            <strong>Toplam Desi:</strong> ${data.total_demand?.toFixed(2)}<br>
+                            <strong>Durum:</strong> ${getStatusText(data.status)}
+                        </p>
+                    </div>
+                `;
+            });
+    });
+}
+
+function getStatusColor(status) {
+    switch (status) {
+        case 'completed': return '#198754';
+        case 'failed': return '#dc3545';
+        case 'skipped': return '#6c757d';
+        default: return '#0d6efd';
+    }
+}
+
+function getStatusText(status) {
+    switch (status) {
+        case 'planned': return 'Planlandı';
+        case 'in_progress': return 'Devam Ediyor';
+        case 'completed': return 'Tamamlandı';
+        case 'failed': return 'Başarısız';
+        case 'skipped': return 'Atlandı';
+        case 'cancelled': return 'İptal Edildi';
+        default: return status;
+    }
+}
+
+function deleteWarehouse(warehouseId, warehouseName) {
+    const modal = new bootstrap.Modal(document.getElementById('deleteWarehouseModal'));
+    document.getElementById('deleteWarehouseName').textContent = warehouseName;
+    document.getElementById('deleteWarehouseForm').action = `/company/warehouse/${warehouseId}/delete`;
+    modal.show();
+}
+
+function deleteRoute(routeId) {
+    if (!confirm('Bu rotayı silmek istediğinizden emin misiniz?')) {
+        return;
+    }
+    
+    fetch(`/api/company/route/${routeId}/delete`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            if (response.status === 404) {
+                throw new Error('Rota bulunamadı');
+            } else if (response.status === 400) {
+                throw new Error('Bu rota silinemez');
+            }
+            throw new Error('API yanıtı başarısız: ' + response.status);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Hata: ' + error.message);
+    });
+}
+</script>
+{% endblock %} 

@@ -138,4 +138,7 @@ body {
 .depot-marker, .customer-marker {
     box-shadow: none !important;
     background-clip: padding-box;
+}
+.btn {
+    margin: 8px;
 } 

@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('company_dashboard') }}">Yönetim Paneli</a></li>
+            <li class="breadcrumb-item active">{{ customer.name }} - Düzenle</li>
+        </ol>
+    </nav>
+
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card bg-dark">
+                <div class="card-header">
+                    <h5 class="mb-0">Müşteri Düzenle</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('edit_customer', customer_id=customer.id) }}">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="name" class="form-label">Müşteri Adı</label>
+                                <input type="text" class="form-control" id="name" name="name" 
+                                       value="{{ customer.name }}" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="contact_person" class="form-label">İletişim Kişisi</label>
+                                <input type="text" class="form-control" id="contact_person" name="contact_person" 
+                                       value="{{ customer.contact_person }}" required>
+                            </div>
+                            
+                            <div class="col-md-12 mb-3">
+                                <label for="address" class="form-label">Adres</label>
+                                <textarea class="form-control" id="address" name="address" rows="3" required>{{ customer.address }}</textarea>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="latitude" class="form-label">Enlem</label>
+                                <input type="number" class="form-control" id="latitude" name="latitude" 
+                                       step="0.000001" value="{{ customer.latitude }}" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="longitude" class="form-label">Boylam</label>
+                                <input type="number" class="form-control" id="longitude" name="longitude" 
+                                       step="0.000001" value="{{ customer.longitude }}" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="contact_phone" class="form-label">Telefon</label>
+                                <input type="tel" class="form-control" id="contact_phone" name="contact_phone" 
+                                       value="{{ customer.contact_phone }}" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="email" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="email" name="email" 
+                                       value="{{ customer.email }}" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="priority" class="form-label">Öncelik (1-10)</label>
+                                <input type="number" class="form-control" id="priority" name="priority" 
+                                       min="1" max="10" value="{{ customer.priority }}" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="desi" class="form-label">Desi</label>
+                                <input type="number" class="form-control" id="desi" name="desi" 
+                                       step="0.01" min="0" value="{{ customer.desi }}" required>
+                            </div>
+                            
+                            <div class="col-md-12 mb-3">
+                                <label for="notes" class="form-label">Notlar</label>
+                                <textarea class="form-control" id="notes" name="notes" rows="3">{{ customer.notes }}</textarea>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('company_dashboard') }}" class="btn btn-secondary">İptal</a>
+                            <button type="submit" class="btn btn-primary">Değişiklikleri Kaydet</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Harita için alan -->
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card bg-dark">
+                <div class="card-header">
+                    <h5 class="mb-0">Konum Seç</h5>
+                </div>
+                <div class="card-body">
+                    <div id="map" style="height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const map = L.map('map').setView([{{ customer.latitude }}, {{ customer.longitude }}], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+let marker = L.marker([{{ customer.latitude }}, {{ customer.longitude }}]).addTo(map);
+
+map.on('click', function(e) {
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+    
+    document.getElementById('latitude').value = lat.toFixed(6);
+    document.getElementById('longitude').value = lng.toFixed(6);
+    
+    if (marker) {
+        map.removeLayer(marker);
+    }
+    
+    marker = L.marker([lat, lng]).addTo(map);
+});
+
+// Koordinatlar manuel girildiğinde haritayı güncelle
+document.getElementById('latitude').addEventListener('change', updateMarker);
+document.getElementById('longitude').addEventListener('change', updateMarker);
+
+function updateMarker() {
+    const lat = parseFloat(document.getElementById('latitude').value);
+    const lng = parseFloat(document.getElementById('longitude').value);
+    
+    if (!isNaN(lat) && !isNaN(lng)) {
+        if (marker) {
+            map.removeLayer(marker);
+        }
+        
+        marker = L.marker([lat, lng]).addTo(map);
+        map.setView([lat, lng], 13);
+    }
+}
+</script>
+{% endblock %} 

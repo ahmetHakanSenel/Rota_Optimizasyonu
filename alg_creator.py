@@ -184,45 +184,40 @@ def create_initial_solution(instance, size, map_handler):
     return best_solution
 
 def run_tabu_search(
-    instance_name,
+    instance_data,
     individual_size,
     n_gen,
     tabu_size,
     stagnation_limit=20,
     verbose=True,
-    early_stop_limit=60,
     vehicle_capacity=None
 ):
     """Geliştirilmiş Tabu Arama algoritması"""
     random.seed(42)
     
-    # Problem verilerini yükle
-    problem_instance = ProblemInstance(instance_name)
-    instance = problem_instance.get_data()
-    
-    if instance is None:
+    if instance_data is None:
         return None
     
     print("Initializing OSRM handler and precomputing distances...")
     maps_handler = OSRMHandler()
-    if not maps_handler.precompute_distances(instance):
+    if not maps_handler.precompute_distances(instance_data):
         print("Failed to precompute distances. Exiting...")
         return None
 
-    # Use provided vehicle capacity or get from instance
+    # Ensure vehicle capacity is considered in the optimization
     if vehicle_capacity is None:
-        vehicle_capacity = float(instance.get('vehicle_capacity', 500))
+        raise ValueError('Vehicle capacity must be provided')
     
     # Calculate total demand
-    total_demand = sum(float(instance[f'C_{i}']['demand']) for i in range(1, individual_size + 1))
+    total_demand = sum(float(instance_data[f'C_{i}']['demand']) for i in range(1, individual_size + 1))
     print(f"Total demand: {total_demand}, Vehicle capacity: {vehicle_capacity}")
     
     # Check if problem is solvable with given capacity
-    if total_demand > vehicle_capacity * instance['max_vehicle_number']:
+    if total_demand > vehicle_capacity * instance_data['max_vehicle_number']:
         print("Problem is unsolvable: Total demand exceeds maximum possible capacity")
         return None
     
-    customers = [(i, float(instance[f'C_{i}']['demand'])) for i in range(1, individual_size + 1)]
+    customers = [(i, float(instance_data[f'C_{i}']['demand'])) for i in range(1, individual_size + 1)]
     
     def split_into_routes(solution):
         """Çözümü araç kapasitesine göre rotalara böl"""
@@ -246,7 +241,7 @@ def run_tabu_search(
             routes.append(current_route)
         
         # Check if we exceed maximum vehicle number
-        if len(routes) > instance['max_vehicle_number']:
+        if len(routes) > instance_data['max_vehicle_number']:
             return None
         
         return routes
@@ -256,22 +251,22 @@ def run_tabu_search(
         total_distance = 0
         for route in routes:
             prev_point = (
-                instance['depart']['coordinates']['x'],
-                instance['depart']['coordinates']['y']
+                instance_data['depart']['coordinates']['x'],
+                instance_data['depart']['coordinates']['y']
             )
             
             for customer_id in route:
                 current_point = (
-                    instance[f'C_{customer_id}']['coordinates']['x'],
-                    instance[f'C_{customer_id}']['coordinates']['y']
+                    instance_data[f'C_{customer_id}']['coordinates']['x'],
+                    instance_data[f'C_{customer_id}']['coordinates']['y']
                 )
                 total_distance += maps_handler.get_distance(prev_point, current_point)
                 prev_point = current_point
             
             # Depoya dönüş
             depot_point = (
-                instance['depart']['coordinates']['x'],
-                instance['depart']['coordinates']['y']
+                instance_data['depart']['coordinates']['x'],
+                instance_data['depart']['coordinates']['y']
             )
             total_distance += maps_handler.get_distance(prev_point, depot_point)
         
@@ -302,8 +297,8 @@ def run_tabu_search(
         if verbose and iteration % 100 == 0:
             print(f"\nIteration {iteration}:")
         
-        if no_improvement_counter >= early_stop_limit:
-            print(f"\nEarly stopping! No improvement for {early_stop_limit} iterations.")
+        if no_improvement_counter >= stagnation_limit:
+            print(f"\nEarly stopping! No improvement for {stagnation_limit} iterations.")
             break
         
         # Daha fazla komşu üret
@@ -329,11 +324,11 @@ def run_tabu_search(
         
         # Her 5 iterasyonda bir 2-opt iyileştirmesi uygula
         if iteration % 5 == 0:
-            best_neighbor = k_opt_improvement(best_neighbor, instance, maps_handler, k=2)
+            best_neighbor = k_opt_improvement(best_neighbor, instance_data, maps_handler, k=2)
         
         # Her 10 iterasyonda bir 3-opt iyileştirmesi uygula
         if iteration % 10 == 0:
-            best_neighbor = k_opt_improvement(best_neighbor, instance, maps_handler, k=3)
+            best_neighbor = k_opt_improvement(best_neighbor, instance_data, maps_handler, k=3)
         
         current_solution = best_neighbor
         current_fitness = best_neighbor_fitness
@@ -353,7 +348,7 @@ def run_tabu_search(
         if stagnation_counter >= diversification_threshold:
             print("Diversifying solution...")
             current_solution = diversify_solution(current_solution)
-            current_solution = k_opt_improvement(current_solution, instance, maps_handler, k=2)
+            current_solution = k_opt_improvement(current_solution, instance_data, maps_handler, k=2)
             stagnation_counter = 0
     
     if best_solution is None:

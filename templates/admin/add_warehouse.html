@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('admin_dashboard') }}">Admin Paneli</a></li>
+            <li class="breadcrumb-item active">{{ 'Depo Düzenle' if warehouse else 'Yeni Depo Ekle' }}</li>
+        </ol>
+    </nav>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card bg-dark">
+                <div class="card-header">
+                    <h5 class="mb-0">{{ 'Depo Düzenle' if warehouse else 'Yeni Depo Ekle' }}</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="warehouseForm">
+                        <div class="mb-3">
+                            <label for="name" class="form-label">Depo Adı</label>
+                            <input type="text" class="form-control" id="name" name="name" 
+                                   value="{{ warehouse.name if warehouse else '' }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="address" class="form-label">Adres</label>
+                            <textarea class="form-control" id="address" name="address" rows="3" required>{{ warehouse.address if warehouse else '' }}</textarea>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="latitude" class="form-label">Enlem</label>
+                                <input type="number" step="any" class="form-control" id="latitude" name="latitude"
+                                       value="{{ warehouse.latitude if warehouse else '' }}" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="longitude" class="form-label">Boylam</label>
+                                <input type="number" step="any" class="form-control" id="longitude" name="longitude"
+                                       value="{{ warehouse.longitude if warehouse else '' }}" required>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="capacity" class="form-label">Kapasite</label>
+                            <input type="number" class="form-control" id="capacity" name="capacity"
+                                   value="{{ warehouse.capacity if warehouse else '' }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="contact_person" class="form-label">İletişim Kişisi</label>
+                            <input type="text" class="form-control" id="contact_person" name="contact_person"
+                                   value="{{ warehouse.contact_person if warehouse else '' }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="contact_phone" class="form-label">İletişim Telefonu</label>
+                            <input type="text" class="form-control" id="contact_phone" name="contact_phone"
+                                   value="{{ warehouse.contact_phone if warehouse else '' }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="operating_hours" class="form-label">Çalışma Saatleri</label>
+                            <input type="text" class="form-control" id="operating_hours" name="operating_hours"
+                                   placeholder="Örn: 08:00-18:00"
+                                   value="{{ warehouse.operating_hours if warehouse else '' }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_active" name="is_active"
+                                       {{ 'checked' if not warehouse or warehouse.is_active }}>
+                                <label class="form-check-label" for="is_active">
+                                    Aktif
+                                </label>
+                            </div>
+                        </div>
+
+                        <input type="hidden" name="company_id" value="{{ company_id }}">
+
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">İptal</a>
+                            <button type="submit" class="btn btn-primary">
+                                {{ 'Güncelle' if warehouse else 'Ekle' }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card bg-dark">
+                <div class="card-header">
+                    <h5 class="mb-0">Konum Seç</h5>
+                </div>
+                <div class="card-body">
+                    <div id="map" style="height: 500px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const map = L.map('map').setView([39.9334, 32.8597], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+let marker = null;
+
+{% if warehouse %}
+    // Mevcut depo konumunu göster
+    marker = L.marker([{{ warehouse.latitude }}, {{ warehouse.longitude }}]).addTo(map);
+    map.setView([{{ warehouse.latitude }}, {{ warehouse.longitude }}], 13);
+{% endif %}
+
+map.on('click', function(e) {
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+    
+    document.getElementById('latitude').value = lat.toFixed(6);
+    document.getElementById('longitude').value = lng.toFixed(6);
+    
+    if (marker) {
+        map.removeLayer(marker);
+    }
+    
+    marker = L.marker([lat, lng]).addTo(map);
+});
+
+// Koordinatlar manuel girildiğinde haritayı güncelle
+document.getElementById('latitude').addEventListener('change', updateMarker);
+document.getElementById('longitude').addEventListener('change', updateMarker);
+
+function updateMarker() {
+    const lat = parseFloat(document.getElementById('latitude').value);
+    const lng = parseFloat(document.getElementById('longitude').value);
+    
+    if (!isNaN(lat) && !isNaN(lng)) {
+        if (marker) {
+            map.removeLayer(marker);
+        }
+        
+        marker = L.marker([lat, lng]).addTo(map);
+        map.setView([lat, lng], 13);
+    }
+}
+</script>
+{% endblock %} 

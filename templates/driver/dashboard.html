@@ -1,0 +1,478 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Şoför Paneli</h2>
+    </div>
+
+    <div class="row">
+        <!-- Şoför Bilgileri -->
+        <div class="col-md-4 mb-4">
+            <div class="card bg-dark">
+                <div class="card-header">
+                    <h5 class="mb-0">Şoför Bilgileri</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Ad Soyad:</strong> {{ driver.user.first_name }} {{ driver.user.last_name }}</p>
+                    <p><strong>Email:</strong> {{ driver.user.email }}</p>
+                    <p><strong>Ehliyet No:</strong> {{ driver.license_number }}</p>
+                    <p><strong>Deneyim:</strong> {{ driver.total_experience_years }} yıl</p>
+                    <p><strong>Şirket:</strong> {{ driver.company.name }}</p>
+                    {% if driver.vehicle %}
+                    <p><strong>Atanan Araç:</strong> {{ driver.vehicle.plate_number }} ({{ driver.vehicle.brand }} {{ driver.vehicle.model }})</p>
+                    {% else %}
+                    <p><strong>Atanan Araç:</strong> <span class="text-muted">Atanmamış</span></p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Aktif Rotalar -->
+        <div class="col-md-8 mb-4">
+            <div class="card bg-dark">
+                <div class="card-header">
+                    <h5 class="mb-0">Aktif Rotalar</h5>
+                </div>
+                <div class="card-body">
+                    {% if active_routes %}
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Başlangıç</th>
+                                    <th>Bitiş</th>
+                                    <th>Mesafe</th>
+                                    <th>Durum</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for route in active_routes %}
+                                <tr>
+                                    <td>{% if route.start_time %}{{ route.start_time.strftime('%d.%m.%Y %H:%M') }}{% else %} - {% endif %}</td>
+                                    <td>{{ route.end_time.strftime('%d.%m.%Y %H:%M') if route.end_time }}</td>
+                                    <td>{{ "%.1f"|format(route.total_distance|float) }} km</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'warning' if route.status.value == 'in_progress' else 'success' if route.status.value == 'completed' else 'info' }}">
+                                            {{ route.status.value }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-primary btn-sm" onclick="showRouteDetails({{ route.id }})">
+                                            <i class="bi bi-eye"></i> Detaylar
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">Aktif rotanız bulunmamaktadır.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Rota Geçmişi -->
+        <div class="col-md-12">
+            <div class="card bg-dark">
+                <div class="card-header">
+                    <h5 class="mb-0">Rota Geçmişi</h5>
+                </div>
+                <div class="card-body">
+                    {% if completed_routes %}
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Tarih</th>
+                                    <th>Araç</th>
+                                    <th>Mesafe</th>
+                                    <th>Süre</th>
+                                    <th>Durum</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for route in completed_routes %}
+                                <tr>
+                                    <td>{{ route.start_time.strftime('%d.%m.%Y') }}</td>
+                                    <td>{{ route.vehicle.plate_number }}</td>
+                                    <td>{{ "%.1f"|format(route.total_distance|float) }} km</td>
+                                    <td>{{ route.total_duration }} dk</td>
+                                    <td>
+                                        <span class="badge bg-success">{{ route.status.value }}</span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-primary btn-sm" onclick="showRouteDetails({{ route.id }})">
+                                            <i class="bi bi-eye"></i> Detaylar
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">Henüz tamamlanmış rotanız bulunmamaktadır.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rota Detay Modal -->
+<div class="modal fade" id="routeDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Rota Detayları</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="routeMap" style="height: 400px; margin-bottom: 20px;"></div>
+                <div id="routeStops"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let routeMap = null;
+let routeMarkers = [];
+let routePolylines = [];
+
+function showRouteDetails(routeId) {
+    const modal = new bootstrap.Modal(document.getElementById('routeDetailsModal'));
+    modal.show();
+    
+    // Modal gösterildiğinde haritayı yeniden boyutlandır
+    document.getElementById('routeDetailsModal').addEventListener('shown.bs.modal', function () {
+        if (!routeMap) {
+            routeMap = L.map('routeMap');
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(routeMap);
+        }
+        
+        // Önceki rota verilerini temizle
+        routeMarkers.forEach(marker => routeMap.removeLayer(marker));
+        routePolylines.forEach(line => routeMap.removeLayer(line));
+        routeMarkers = [];
+        routePolylines = [];
+        
+        // Rota detaylarını API'den al
+        fetch(`/api/route/${routeId}`)
+            .then(response => response.json())
+            .then(data => {
+                const bounds = L.latLngBounds();
+                const stops = [];
+                
+                // Depo noktasını ekle
+                if (data.warehouse) {
+                    const depot = L.marker(
+                        [data.warehouse.latitude, data.warehouse.longitude],
+                        {
+                            icon: L.divIcon({
+                                className: 'depot-marker',
+                                html: '<div style="background-color: #198754;">D</div>'
+                            })
+                        }
+                    ).bindPopup(`
+                        <strong>${data.warehouse.name}</strong><br>
+                        ${data.warehouse.address}
+                    `);
+                    
+                    routeMarkers.push(depot);
+                    depot.addTo(routeMap);
+                    bounds.extend([data.warehouse.latitude, data.warehouse.longitude]);
+                }
+                
+                // Durakları ekle
+                data.stops.forEach((stop, index) => {
+                    const marker = L.marker(
+                        [stop.customer.latitude, stop.customer.longitude],
+                        {
+                            icon: L.divIcon({
+                                className: 'customer-marker',
+                                html: `<div style="background-color: ${getStatusColor(stop.status)};">${index + 1}</div>`
+                            })
+                        }
+                    ).bindPopup(`
+                        <strong>${stop.customer.name}</strong><br>
+                        ${stop.customer.address}<br>
+                        <small>
+                            <strong>İletişim:</strong> ${stop.customer.contact_person}<br>
+                            <strong>Telefon:</strong> ${stop.customer.contact_phone}<br>
+                            <strong>Yük:</strong> ${stop.demand}<br>
+                            <strong>Durum:</strong> ${getStatusText(stop.status)}
+                        </small>
+                    `);
+                    
+                    routeMarkers.push(marker);
+                    marker.addTo(routeMap);
+                    bounds.extend([stop.customer.latitude, stop.customer.longitude]);
+                    
+                    stops.push(`
+                        <div class="route-stop">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>${index + 1}. ${stop.customer.name}</strong>
+                                    <br>
+                                    <small>${stop.customer.address}</small>
+                                </div>
+                                <div>
+                                    <span class="badge bg-${getStatusBadgeColor(stop.status)}">
+                                        ${getStatusText(stop.status)}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="mt-2">
+                                <small>
+                                    <strong>Planlanan Varış:</strong> ${formatDateTime(stop.planned_arrival)}<br>
+                                    <strong>Gerçekleşen Varış:</strong> ${formatDateTime(stop.actual_arrival) || '-'}<br>
+                                    <strong>Yük:</strong> ${stop.demand}<br>
+                                    ${stop.notes ? `<strong>Notlar:</strong> ${stop.notes}<br>` : ''}
+                                </small>
+                            </div>
+                            ${getStopActions(routeId, stop)}
+                        </div>
+                    `);
+                });
+                
+                // Rota bilgilerini göster
+                document.getElementById('routeStops').innerHTML = `
+                    <div class="route-details">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="mb-0">Rota Bilgileri</h6>
+                            ${getRouteActions(data)}
+                        </div>
+                        <p>
+                            <strong>Başlangıç:</strong> ${formatDateTime(data.start_time)}<br>
+                            <strong>Bitiş:</strong> ${formatDateTime(data.end_time) || '-'}<br>
+                            <strong>Toplam Mesafe:</strong> ${data.total_distance?.toFixed(1)} km<br>
+                            <strong>Toplam Süre:</strong> ${formatDuration(data.total_duration)}<br>
+                            <strong>Toplam Yük:</strong> ${data.total_demand}<br>
+                            <strong>Araç:</strong> ${data.vehicle ? `${data.vehicle.plate_number} (${data.vehicle.brand} ${data.vehicle.model})` : '-'}<br>
+                            <strong>Durum:</strong> <span class="badge bg-${getStatusBadgeColor(data.status)}">${getStatusText(data.status)}</span>
+                        </p>
+                    </div>
+                    <div class="route-details mt-3">
+                        <h6 class="mb-3">Duraklar</h6>
+                        ${stops.join('')}
+                    </div>
+                `;
+                
+                // Haritayı sınırlara göre ayarla
+                routeMap.fitBounds(bounds, { padding: [50, 50] });
+                routeMap.invalidateSize();
+            });
+    });
+}
+
+function getStatusColor(status) {
+    switch (status) {
+        case 'completed': return '#198754';  // success
+        case 'failed': return '#dc3545';     // danger
+        case 'skipped': return '#6c757d';    // secondary
+        default: return '#0d6efd';           // primary
+    }
+}
+
+function getStatusBadgeColor(status) {
+    switch (status) {
+        case 'completed': return 'success';
+        case 'in_progress': return 'warning';
+        case 'failed': return 'danger';
+        case 'skipped': return 'secondary';
+        default: return 'info';
+    }
+}
+
+function getStatusText(status) {
+    switch (status) {
+        case 'planned': return 'Planlandı';
+        case 'in_progress': return 'Devam Ediyor';
+        case 'completed': return 'Tamamlandı';
+        case 'failed': return 'Başarısız';
+        case 'skipped': return 'Atlandı';
+        case 'cancelled': return 'İptal Edildi';
+        default: return status;
+    }
+}
+
+function formatDateTime(dateStr) {
+    if (!dateStr) return null;
+    const date = new Date(dateStr);
+    return date.toLocaleString('tr-TR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function formatDuration(minutes) {
+    if (!minutes) return '-';
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}s ${mins}dk`;
+}
+
+function getRouteActions(route) {
+    if (route.status === 'completed' || route.status === 'cancelled') {
+        return '';
+    }
+    
+    return `
+        <div class="btn-group btn-group-sm">
+            ${route.status === 'planned' ? `
+                <button class="btn btn-success" onclick="updateRouteStatus(${route.id}, 'in_progress')">
+                    <i class="bi bi-play-fill"></i> Başlat
+                </button>
+                <button class="btn btn-danger" onclick="deleteRoute(${route.id})">
+                    <i class="bi bi-trash"></i> Sil
+                </button>
+            ` : ''}
+            ${route.status === 'in_progress' ? `
+                <button class="btn btn-success" onclick="updateRouteStatus(${route.id}, 'completed')">
+                    <i class="bi bi-check-lg"></i> Tamamla
+                </button>
+                <button class="btn btn-danger" onclick="updateRouteStatus(${route.id}, 'cancelled')">
+                    <i class="bi bi-x-lg"></i> İptal Et
+                </button>
+            ` : ''}
+        </div>
+    `;
+}
+
+function getStopActions(routeId, stop) {
+    if (stop.status === 'completed' || stop.status === 'failed' || stop.status === 'skipped') {
+        return '';
+    }
+    
+    return `
+        <div class="mt-2">
+            <button class="btn btn-success btn-sm" onclick="updateStopStatus(${routeId}, ${stop.id}, 'completed')">
+                <i class="bi bi-check-lg"></i> Tamamla
+            </button>
+            <button class="btn btn-danger btn-sm" onclick="updateStopStatus(${routeId}, ${stop.id}, 'failed')">
+                <i class="bi bi-x-lg"></i> Başarısız
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="updateStopStatus(${routeId}, ${stop.id}, 'skipped')">
+                <i class="bi bi-skip-forward"></i> Atla
+            </button>
+        </div>
+    `;
+}
+
+function updateRouteStatus(routeId, newStatus) {
+    if (!confirm(`Rota durumunu "${getStatusText(newStatus)}" olarak güncellemek istediğinizden emin misiniz?`)) {
+        return;
+    }
+    
+    fetch(`/api/route/${routeId}/status`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: newStatus })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu'));
+        }
+    })
+    .catch(error => {
+        alert('Hata: ' + error.message);
+    });
+}
+
+function updateStopStatus(routeId, stopId, newStatus) {
+    const notes = prompt('Bu durak için not eklemek ister misiniz?');
+    
+    console.log(`Updating stop status - Route: ${routeId}, Stop: ${stopId}, Status: ${newStatus}`);
+    
+    fetch(`/api/route/${routeId}/stop/${stopId}/status`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+            status: newStatus,
+            notes: notes
+        })
+    })
+    .then(response => {
+        console.log('Response status:', response.status);
+        console.log('Response headers:', response.headers);
+        
+        if (!response.ok) {
+            if (response.status === 404) {
+                throw new Error('Durak veya rota bulunamadı');
+            }
+            throw new Error('API yanıtı başarısız: ' + response.status);
+        }
+        
+        return response.json().catch(error => {
+            console.error('JSON parse error:', error);
+            throw new Error('API yanıtı JSON formatında değil');
+        });
+    })
+    .then(data => {
+        if (data.success) {
+            showRouteDetails(routeId);
+        } else {
+            alert('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Hata: ' + error.message);
+    });
+}
+
+function deleteRoute(routeId) {
+    if (!confirm('Bu rotayı silmek istediğinizden emin misiniz?')) {
+        return;
+    }
+    
+    fetch(`/api/route/${routeId}/delete`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            if (response.status === 404) {
+                throw new Error('Rota bulunamadı');
+            } else if (response.status === 400) {
+                throw new Error('Bu rota silinemez');
+            }
+            throw new Error('API yanıtı başarısız: ' + response.status);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Hata: ' + error.message);
+    });
+}
+</script>
+{% endblock %} 

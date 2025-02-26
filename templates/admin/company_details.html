@@ -1,0 +1,374 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('admin_dashboard') }}">Admin Paneli</a></li>
+            <li class="breadcrumb-item active">{{ company.name }}</li>
+        </ol>
+    </nav>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="row">
+        <!-- Şirket Bilgileri -->
+        <div class="col-md-4 mb-4">
+            <div class="card bg-dark">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Şirket Bilgileri</h5>
+                    <div class="btn-group">
+                        <a href="{{ url_for('edit_company', company_id=company.id) }}" class="btn btn-warning btn-sm">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteCompanyModal">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p><strong>Vergi No:</strong> {{ company.tax_number }}</p>
+                    <p><strong>Adres:</strong> {{ company.address }}</p>
+                    <p><strong>Telefon:</strong> {{ company.phone }}</p>
+                    <p><strong>Email:</strong> {{ company.email }}</p>
+                    <p><strong>Max Araç:</strong> {{ company.max_vehicles }}</p>
+                    <p><strong>Max Kullanıcı:</strong> {{ company.max_users }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Çalışanlar -->
+        <div class="col-md-8 mb-4">
+            <div class="card bg-dark">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Çalışanlar</h5>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addEmployeeModal">
+                        <i class="bi bi-plus-lg"></i> Yeni Çalışan
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Ad Soyad</th>
+                                    <th>Departman</th>
+                                    <th>Pozisyon</th>
+                                    <th>Admin</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for employee in employees %}
+                                <tr>
+                                    <td>{{ employee.user.first_name }} {{ employee.user.last_name }}</td>
+                                    <td>{{ employee.department }}</td>
+                                    <td>{{ employee.position }}</td>
+                                    <td>
+                                        {% if employee.is_admin %}
+                                        <span class="badge bg-success">Evet</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">Hayır</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-warning">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-danger">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Araçlar -->
+        <div class="col-md-6 mb-4">
+            <div class="card bg-dark">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Araçlar</h5>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addVehicleModal">
+                        <i class="bi bi-plus-lg"></i> Yeni Araç
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Plaka</th>
+                                    <th>Model</th>
+                                    <th>Kapasite</th>
+                                    <th>Durum</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for vehicle in vehicles %}
+                                <tr>
+                                    <td>{{ vehicle.plate_number }}</td>
+                                    <td>{{ vehicle.brand }} {{ vehicle.model }}</td>
+                                    <td>{{ vehicle.capacity }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if vehicle.status.value == 'active' else 'warning' if vehicle.status.value == 'maintenance' else 'danger' }}">
+                                            {{ vehicle.status.value }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-warning">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-danger">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Şoförler -->
+        <div class="col-md-6 mb-4">
+            <div class="card bg-dark">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Şoförler</h5>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addDriverModal">
+                        <i class="bi bi-plus-lg"></i> Yeni Şoför
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Ad Soyad</th>
+                                    <th>Ehliyet No</th>
+                                    <th>Deneyim</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for driver in drivers %}
+                                <tr>
+                                    <td>{{ driver.user.first_name }} {{ driver.user.last_name }}</td>
+                                    <td>{{ driver.license_number }}</td>
+                                    <td>{{ driver.total_experience_years }} yıl</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-warning">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-danger">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Depolar -->
+        <div class="col-md-8 mb-4">
+            <div class="card bg-dark">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Depolar</h5>
+                    <a href="{{ url_for('admin_add_warehouse', company_id=company.id) }}" class="btn btn-primary btn-sm">
+                        <i class="bi bi-plus-lg"></i> Yeni Depo
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Ad</th>
+                                    <th>Adres</th>
+                                    <th>Kapasite</th>
+                                    <th>Durum</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for warehouse in warehouses %}
+                                <tr>
+                                    <td>{{ warehouse.name }}</td>
+                                    <td>
+                                        {{ warehouse.address }}<br>
+                                        <small class="text-muted">
+                                            ({{ warehouse.latitude }}, {{ warehouse.longitude }})
+                                        </small>
+                                    </td>
+                                    <td>{{ warehouse.capacity }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if warehouse.is_active else 'danger' }}">
+                                            {{ 'Aktif' if warehouse.is_active else 'Pasif' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{{ url_for('admin_edit_warehouse', warehouse_id=warehouse.id) }}" 
+                                               class="btn btn-warning">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            <button type="button" class="btn btn-danger delete-warehouse" 
+                                                    data-id="{{ warehouse.id }}" data-name="{{ warehouse.name }}">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Müşteriler -->
+        <div class="col-md-6 mb-4">
+            <div class="card bg-dark">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Müşteriler</h5>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addCustomerModal">
+                        <i class="bi bi-plus-lg"></i> Yeni Müşteri
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Ad</th>
+                                    <th>İletişim</th>
+                                    <th>Desi</th>
+                                    <th>Öncelik</th>
+                                    <th>İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for customer in customers %}
+                                <tr>
+                                    <td>{{ customer.name }}</td>
+                                    <td>{{ customer.contact_person }}<br>{{ customer.contact_phone }}</td>
+                                    <td>{{ "%.2f"|format(customer.desi|float) }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'danger' if customer.priority > 7 else 'warning' if customer.priority > 4 else 'info' }}">
+                                            {{ customer.priority }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-warning">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-danger">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Şirket Silme Modal -->
+<div class="modal fade" id="deleteCompanyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Şirket Sil</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bu şirketi ve tüm ilişkili verileri silmek istediğinizden emin misiniz?</p>
+                <p class="text-danger">{{ company.name }}</p>
+                <p class="text-warning">Bu işlem geri alınamaz!</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <form action="{{ url_for('delete_company', company_id=company.id) }}" method="POST">
+                    <button type="submit" class="btn btn-danger">Sil</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Depo Silme Modal -->
+<div class="modal fade" id="deleteWarehouseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Depo Sil</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bu depoyu silmek istediğinizden emin misiniz?</p>
+                <p class="text-danger" id="deleteWarehouseName"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <form id="deleteWarehouseForm" method="POST">
+                    <button type="submit" class="btn btn-danger">Sil</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.delete-warehouse').forEach(button => {
+        button.addEventListener('click', function() {
+            const warehouseId = this.dataset.id;
+            const warehouseName = this.dataset.name;
+            deleteWarehouse(warehouseId, warehouseName);
+        });
+    });
+});
+
+function deleteWarehouse(warehouseId, warehouseName) {
+    const modal = new bootstrap.Modal(document.getElementById('deleteWarehouseModal'));
+    document.getElementById('deleteWarehouseName').textContent = warehouseName;
+    document.getElementById('deleteWarehouseForm').action = `/admin/warehouse/${warehouseId}/delete`;
+    modal.show();
+}
+</script>
+{% endblock %} 
