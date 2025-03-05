@@ -275,6 +275,9 @@ def run_tabu_search(
     def evaluate_solution(solution):
         """Çözümü değerlendir - araç sayısı ve mesafe optimizasyonu"""
         routes = split_into_routes(solution)
+        if routes is None:
+            return float('inf')
+            
         num_vehicles = len(routes)
         total_distance = calculate_total_distance(routes)
         
@@ -282,17 +285,27 @@ def run_tabu_search(
         # Araç sayısını minimize etmek öncelikli
         return num_vehicles * 10000 + total_distance
 
-    best_solution = None
-    best_fitness = float('inf')
-    current_solution = list(range(1, individual_size + 1))
-    random.shuffle(current_solution)
+    # Başlangıç çözümünü oluştur
+    print("Creating initial solution...")
+    initial_solution = create_initial_solution(instance_data, individual_size, maps_handler)
+    if initial_solution is None:
+        print("Failed to create initial solution")
+        # Rastgele bir çözüm oluştur
+        initial_solution = list(range(1, individual_size + 1))
+        random.shuffle(initial_solution)
     
-    tabu_list = AdaptiveTabuList(tabu_size * 2, tabu_size * 4)
+    best_solution = initial_solution.copy()
+    best_fitness = evaluate_solution(best_solution)
+    current_solution = initial_solution.copy()
+    current_fitness = best_fitness
+    
+    tabu_list = AdaptiveTabuList(tabu_size, tabu_size * 2)
     diversification_threshold = stagnation_limit // 2
     stagnation_counter = 0
     no_improvement_counter = 0
     
     print("\nStarting optimization...")
+    
     for iteration in range(n_gen):
         if verbose and iteration % 100 == 0:
             print(f"\nIteration {iteration}:")
@@ -303,62 +316,98 @@ def run_tabu_search(
         
         # Daha fazla komşu üret
         neighbors = []
-        neighbors.extend(generate_neighbors(current_solution, method="swap", num_neighbors=30))
-        neighbors.extend(generate_neighbors(current_solution, method="2-opt", num_neighbors=30))
-        neighbors.extend(generate_neighbors(current_solution, method="insert", num_neighbors=20))
+        neighbors.extend(generate_neighbors(current_solution, method="swap", num_neighbors=40))
+        neighbors.extend(generate_neighbors(current_solution, method="2-opt", num_neighbors=40))
+        neighbors.extend(generate_neighbors(current_solution, method="insert", num_neighbors=30))
+        neighbors.extend(generate_neighbors(current_solution, method="reverse", num_neighbors=20))
         
+        # Komşuları değerlendir
+        valid_neighbors = []
+        for neighbor in neighbors:
+            fitness = evaluate_solution(neighbor)
+            if fitness != float('inf'):
+                valid_neighbors.append((neighbor, fitness))
+        
+        if not valid_neighbors:
+            print("No valid neighbors found. Diversifying...")
+            current_solution = diversify_solution(current_solution)
+            stagnation_counter += 1
+            continue
+        
+        # Tabu olmayan en iyi komşuyu seç
         best_neighbor = None
         best_neighbor_fitness = float('inf')
         
-        for neighbor in neighbors:
-            if not tabu_list.contains(neighbor, aspiration_value=evaluate_solution(neighbor)):
-                fitness = evaluate_solution(neighbor)
+        for neighbor, fitness in valid_neighbors:
+            if not tabu_list.contains(neighbor, aspiration_value=fitness, current_best=best_fitness):
                 if fitness < best_neighbor_fitness:
                     best_neighbor = neighbor
                     best_neighbor_fitness = fitness
         
         if best_neighbor is None:
-            current_solution = diversify_solution(current_solution)
-            stagnation_counter += 1
-            continue
+            # Tabu olmayan komşu bulunamadı, en iyi komşuyu seç
+            best_neighbor, best_neighbor_fitness = min(valid_neighbors, key=lambda x: x[1])
         
         # Her 5 iterasyonda bir 2-opt iyileştirmesi uygula
         if iteration % 5 == 0:
             best_neighbor = k_opt_improvement(best_neighbor, instance_data, maps_handler, k=2)
+            best_neighbor_fitness = evaluate_solution(best_neighbor)
         
         # Her 10 iterasyonda bir 3-opt iyileştirmesi uygula
         if iteration % 10 == 0:
             best_neighbor = k_opt_improvement(best_neighbor, instance_data, maps_handler, k=3)
+            best_neighbor_fitness = evaluate_solution(best_neighbor)
         
+        # Çözümü güncelle
         current_solution = best_neighbor
         current_fitness = best_neighbor_fitness
+        tabu_list.add(current_solution)
         
+        # En iyi çözümü güncelle
         if current_fitness < best_fitness:
             best_solution = current_solution.copy()
             best_fitness = current_fitness
-            stagnation_counter = 0
             no_improvement_counter = 0
+            if verbose:
+                print(f"New best solution found! Fitness: {best_fitness}")
+                routes = split_into_routes(best_solution)
+                print(f"Vehicles: {len(routes)}, Total distance: {calculate_total_distance(routes):.2f} km")
         else:
-            stagnation_counter += 1
             no_improvement_counter += 1
         
-        tabu_list.add(current_solution)
-        
-        # Daha agresif çeşitlendirme
-        if stagnation_counter >= diversification_threshold:
-            print("Diversifying solution...")
-            current_solution = diversify_solution(current_solution)
-            current_solution = k_opt_improvement(current_solution, instance_data, maps_handler, k=2)
-            stagnation_counter = 0
+        # Çeşitlendirme stratejisi
+        if no_improvement_counter >= diversification_threshold:
+            if verbose:
+                print(f"Diversifying after {no_improvement_counter} iterations without improvement")
+            
+            # Mevcut çözümü çeşitlendir
+            if random.random() < 0.5:
+                # Rastgele segmentleri ters çevir
+                for _ in range(3):
+                    i = random.randint(0, len(current_solution) - 3)
+                    j = random.randint(i + 2, len(current_solution))
+                    current_solution[i:j] = reversed(current_solution[i:j])
+            else:
+                # Rastgele karıştır
+                random.shuffle(current_solution)
+            
+            current_fitness = evaluate_solution(current_solution)
+            tabu_list.clear()
+            no_improvement_counter = 0
     
-    if best_solution is None:
+    # Son çözümü iyileştir
+    print("\nFinal solution improvement...")
+    best_solution = k_opt_improvement(best_solution, instance_data, maps_handler, k=2)
+    best_solution = k_opt_improvement(best_solution, instance_data, maps_handler, k=3)
+    
+    # Sonuçları raporla
+    final_routes = split_into_routes(best_solution)
+    if final_routes is None:
+        print("Failed to split solution into valid routes")
         return None
     
-    # En iyi çözümü rotalara böl
-    final_routes = split_into_routes(best_solution)
-    print("\nFinal Solution:")
-    print(f"Number of vehicles: {len(final_routes)}")
-    print(f"Total distance: {calculate_total_distance(final_routes):.2f} km")
+    print(f"\nOptimization completed!")
+    print(f"Final solution: {len(final_routes)} vehicles, {calculate_total_distance(final_routes):.2f} km total distance")
     
     return final_routes
 
@@ -434,8 +483,16 @@ def generate_neighbors(solution, method="swap", num_neighbors=5):
     size = len(solution)
     
     if method == "swap":
+        # Hem yakın hem uzak noktaları değiştir
         for i in range(size-1):
-            for j in range(i+1, min(i+5, size)):  
+            # Yakın komşular (daha fazla yakın komşu dene)
+            for j in range(i+1, min(i+8, size)):
+                neighbor = solution.copy()
+                neighbor[i], neighbor[j] = neighbor[j], neighbor[i]
+                neighbors.append(neighbor)
+            # Uzak komşular (rastgele)
+            for _ in range(3):
+                j = random.randint(i+8, size-1) if i+8 < size else random.randint(0, i-1) if i > 0 else i+1
                 neighbor = solution.copy()
                 neighbor[i], neighbor[j] = neighbor[j], neighbor[i]
                 neighbors.append(neighbor)
@@ -443,7 +500,12 @@ def generate_neighbors(solution, method="swap", num_neighbors=5):
     elif method == "insert":
         for i in range(size):
             value = solution[i]
-            for j in range(max(0, i-4), min(size, i+5)):
+            # Yakın ve uzak noktalara taşıma
+            possible_positions = (
+                list(range(max(0, i-6), min(size, i+7))) +  # Yakın pozisyonlar
+                random.sample(range(size), min(5, size))     # Rastgele pozisyonlar
+            )
+            for j in possible_positions:
                 if i != j:
                     neighbor = solution.copy()
                     neighbor.pop(i)
@@ -451,22 +513,44 @@ def generate_neighbors(solution, method="swap", num_neighbors=5):
                     neighbors.append(neighbor)
     
     elif method == "reverse":
+        # Farklı boyutlarda segmentler
         for i in range(size-2):
-            for length in range(2, min(6, size-i)):  
+            for length in range(2, min(10, size-i)):  # Daha uzun segmentler
+                neighbor = solution.copy()
+                neighbor[i:i+length] = reversed(neighbor[i:i+length])
+                neighbors.append(neighbor)
+            # Rastgele uzun segment çevirme
+            if i < size-10:
+                length = random.randint(10, min(20, size-i))
                 neighbor = solution.copy()
                 neighbor[i:i+length] = reversed(neighbor[i:i+length])
                 neighbors.append(neighbor)
     
     elif method == "2-opt":
         for i in range(1, size-2):
-            for j in range(i+1, min(i+6, size-1)):
+            # Yakın kenarlar
+            for j in range(i+1, min(i+8, size-1)):
+                neighbor = solution.copy()
+                neighbor[i:j] = reversed(neighbor[i:j])
+                neighbors.append(neighbor)
+            # Uzak kenarlar
+            for _ in range(3):
+                j = random.randint(min(i+8, size-1), size-1)
                 neighbor = solution.copy()
                 neighbor[i:j] = reversed(neighbor[i:j])
                 neighbors.append(neighbor)
     
+    # Akıllı seçim stratejisi
     if len(neighbors) > num_neighbors:
-        selected = random.sample(neighbors, num_neighbors-1)
-        selected.append(random.choice(neighbors))  
+        # En az bir tane her türden al
+        selected = []
+        chunk_size = num_neighbors // 4
+        for i in range(0, len(neighbors), len(neighbors)//4):
+            selected.extend(random.sample(neighbors[i:i+len(neighbors)//4], 
+                                       min(chunk_size, len(neighbors[i:i+len(neighbors)//4]))))
+        # Kalan slotları rastgele doldur
+        while len(selected) < num_neighbors:
+            selected.append(random.choice(neighbors))
         return selected
     
     return neighbors

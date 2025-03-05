@@ -17,7 +17,7 @@ def optimize_routes(
     Args:
         db: Database session
         company_id: ID of the company
-        num_customers: Number of customers to include in routes
+        num_customers: Number of customers to include in routes (0 means use all customers)
         
     Returns:
         Dictionary containing optimization results
@@ -50,14 +50,26 @@ def optimize_routes(
             
         # Get company's customers
         customers = db.query(Customer).filter_by(company_id=company_id).all()
-        if len(customers) < num_customers:
+        
+        if len(customers) == 0:
             return {
                 'success': False,
-                'error': f'Not enough customers. Have {len(customers)}, need {num_customers}'
+                'error': 'No customers found for this company'
             }
             
-        # Randomly select customers
-        selected_customers = random.sample(customers, num_customers)
+        # If num_customers is 0, use all customers
+        if num_customers == 0:
+            num_customers = len(customers)
+            selected_customers = customers
+        else:
+            # Check if we have enough customers
+            if len(customers) < num_customers:
+                return {
+                    'success': False,
+                    'error': f'Not enough customers. Have {len(customers)}, need {num_customers}'
+                }
+            # Randomly select customers
+            selected_customers = random.sample(customers, num_customers)
             
         # Get vehicle capacities
         vehicle_capacities = [v.capacity for v in vehicles]

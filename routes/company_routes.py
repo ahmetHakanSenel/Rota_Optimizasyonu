@@ -17,13 +17,14 @@ def optimize():
         data = request.get_json()
         num_customers = data.get('num_customers', 5)
         
-        if num_customers < 2:
+        # If num_customers is 0, use all customers
+        if num_customers != 0 and num_customers < 2:
             return jsonify({
                 'success': False,
-                'error': 'Number of customers must be at least 2'
+                'error': 'Number of customers must be at least 2 or 0 to use all customers'
             }), 400
             
-        if num_customers > 15:
+        if num_customers != 0 and num_customers > 15:
             return jsonify({
                 'success': False,
                 'error': 'Number of customers cannot exceed 15'

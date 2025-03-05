@@ -113,90 +113,79 @@ def index():
 def optimize_route():
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
-    
+        
     db = SessionLocal()
     try:
-        data = request.get_json()
-        instance_name = data.get('instance_name')
-        num_customers = int(data.get('num_customers', 15))
+        data = request.json
+        instance_name = data.get('instance_name', 'bursa')
+        num_customers = int(data.get('num_customers', 10))
         vehicle_capacity = float(data.get('vehicle_capacity', 500))
         
-        print(f"\nOptimization request: {num_customers} customers, capacity: {vehicle_capacity}")
-        
-        # Şirket ID'sini al
+        # Kullanıcının şirket bilgisini al
         if session['user_role'] == UserRole.COMPANY_ADMIN.value:
-            company_id = session['company_id']
+            employee = db.query(CompanyEmployee).filter_by(user_id=session['user_id']).first()
+            if not employee:
+                return jsonify({'error': 'Company information not found'}), 404
+            company_id = employee.company_id
         elif session['user_role'] == UserRole.DRIVER.value:
             driver = db.query(Driver).filter_by(user_id=session['user_id']).first()
             if not driver:
-                return jsonify({'error': 'Driver not found'}), 404
+                return jsonify({'error': 'Driver information not found'}), 404
             company_id = driver.company_id
         else:
-            return jsonify({'error': 'Unauthorized'}), 401
+            return jsonify({'error': 'Unauthorized role'}), 403
+            
+        # Şirketin aktif deposunu bul
+        warehouse = db.query(Warehouse).filter_by(
+            company_id=company_id,
+            is_active=True
+        ).first()
         
-        # Araç kapasitesini kontrol et
-        total_vehicle_capacity = calculate_total_vehicle_capacity(company_id)
-        print(f"Total vehicle capacity: {total_vehicle_capacity}")
-        
-        if total_vehicle_capacity < vehicle_capacity:
-            return jsonify({'error': f'Total vehicle capacity ({total_vehicle_capacity}) is less than required capacity ({vehicle_capacity})'}), 400
-        
-        # Depo bilgilerini al
-        warehouse = db.query(Warehouse).filter_by(company_id=company_id, is_active=True).first()
         if not warehouse:
-            return jsonify({'error': 'No active warehouse found'}), 404
-        
-        print(f"Using warehouse: {warehouse.name} at ({warehouse.latitude}, {warehouse.longitude})")
-        
-        # Müşteri verilerini ekle
+            return jsonify({'error': 'No active warehouse found for this company'}), 404
+            
+        # Müşterileri al
         customers = db.query(Customer).filter_by(company_id=company_id).all()
-        if not customers:
-            return jsonify({'error': 'No customers found'}), 404
         
-        print(f"Total customers in database: {len(customers)}")
+        # Eğer müşteri yoksa hata döndür
+        if len(customers) == 0:
+            return jsonify({'error': 'No customers found for this company'}), 400
+            
+        # Eğer num_customers 0 ise, tüm müşterileri kullan
+        if num_customers == 0:
+            num_customers = len(customers)
+            selected_customers = customers
+        else:
+            # Yeterli müşteri var mı kontrol et
+            if len(customers) < num_customers:
+                return jsonify({'error': f'Not enough customers. Company has {len(customers)} customers, but instance only has {len(customers)} customers.'}), 400
+            
+            # Rastgele müşteri seç
+            selected_customers = random.sample(customers, num_customers)
         
-        if num_customers > len(customers):
-            return jsonify({'error': f'Requested {num_customers} customers but instance only has {len(customers)} customers'}), 400
-        
-        selected_customers = random.sample(customers, num_customers)
-        
-        # Toplam talep miktarını hesapla
-        total_demand = sum(customer.desi for customer in selected_customers)
-        print(f"Total demand for selected customers: {total_demand}")
-        
-        for customer in selected_customers:
-            print(f"Customer: {customer.name}, Coordinates: ({customer.latitude}, {customer.longitude}), Demand: {customer.desi}")
-        
-        if total_demand > total_vehicle_capacity:
-            return jsonify({'error': f'Total demand ({total_demand}) exceeds total vehicle capacity ({total_vehicle_capacity})'}), 400
-        
-        # Problem verilerini oluştur
+        # Problem instance verisi oluştur
         instance_data = {
-            'instance_name': f'company_{company_id}',
-            'max_vehicle_number': min(25, len(db.query(Vehicle).filter_by(company_id=company_id, status=VehicleStatus.ACTIVE).all())),
+            'instance_name': instance_name,
+            'max_vehicle_number': 10,  # Maksimum araç sayısı
             'vehicle_capacity': vehicle_capacity,
             'depart': {
                 'coordinates': {
-                    'x': float(warehouse.latitude),
-                    'y': float(warehouse.longitude)
+                    'x': warehouse.latitude,
+                    'y': warehouse.longitude
                 },
                 'demand': 0
             }
         }
         
-        print(f"Max vehicles: {instance_data['max_vehicle_number']}")
-        
-        # Müşteri verilerini ekle
+        # Müşterileri ekle
         for i, customer in enumerate(selected_customers, 1):
             instance_data[f'C_{i}'] = {
                 'coordinates': {
-                    'x': float(customer.latitude),
-                    'y': float(customer.longitude)
+                    'x': customer.latitude,
+                    'y': customer.longitude
                 },
-                'demand': float(customer.desi),
-                'comment': customer.name
+                'demand': customer.desi
             }
-            print(f"Customer {i}: {customer.name}, Demand: {customer.desi}")
         
         # OSRM ile mesafe matrisini hesapla
         map_handler = OSRMHandler()
@@ -238,56 +227,78 @@ def optimize_route():
             )
 
             # Müsait araç ve şoför bul
-            available_vehicle = db.query(Vehicle).filter(
-                Vehicle.company_id == company_id,
-                Vehicle.status == VehicleStatus.ACTIVE,
-                ~Vehicle.id.in_(
-                    db.query(Route.vehicle_id).filter(
-                        Route.status.in_([RouteStatus.IN_PROGRESS])  # PLANNED durumundaki araçları dahil etme
+            available_driver = db.query(Driver).filter(
+                Driver.company_id == company_id,
+                ~Driver.id.in_(
+                    db.query(Route.driver_id).filter(
+                        Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS])
                     )
                 )
-            ).order_by(Vehicle.capacity.desc()).first()
+            ).first()
 
-            if available_vehicle:
-                route.vehicle_id = available_vehicle.id
-                print(f"Using vehicle: {available_vehicle.plate_number} (Capacity: {available_vehicle.capacity})")
-                
-                # Araç için müsait şoför bul
-                available_driver = db.query(Driver).filter(
-                    Driver.company_id == company_id,
-                    ~Driver.id.in_(
-                        db.query(Route.driver_id).filter(
-                            Route.status.in_([RouteStatus.IN_PROGRESS])  # PLANNED durumundaki şoförleri dahil etme
-                        )
-                    )
-                ).first()
-                
-                if available_driver:
-                    route.driver_id = available_driver.id
-                    print(f"Using driver: {available_driver.user.first_name} {available_driver.user.last_name}")
-                else:
-                    print("No available driver found for this route.")
-            else:
-                print("No available vehicle found for this route.")
-                # Mevcut araçların durumunu yazdır
-                vehicles = db.query(Vehicle).filter(Vehicle.company_id == company_id).all()
-                print("\nCurrent vehicle status:")
-                for v in vehicles:
-                    print(f"Vehicle {v.plate_number}: Status={v.status.value}, Capacity={v.capacity}")
-                    # Aracın mevcut rotalarını kontrol et
-                    current_routes = db.query(Route).filter(
-                        Route.vehicle_id == v.id,
+            if available_driver:
+                route.driver_id = available_driver.id
+                print(f"Using driver: {available_driver.user.first_name} {available_driver.user.last_name}")
+
+                # Önce şoförün atanmış aracını kontrol et
+                if available_driver.vehicle:
+                    # Şoförün atanmış aracı müsait mi kontrol et
+                    vehicle_in_use = db.query(Route).filter(
+                        Route.vehicle_id == available_driver.vehicle.id,
                         Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS])
-                    ).all()
-                    if current_routes:
-                        print(f"  - Assigned to {len(current_routes)} routes:")
-                        for r in current_routes:
-                            print(f"    * Route {r.id}: Status={r.status.value}")
-                
-                return jsonify({'error': 'No available vehicle for the route. Please check vehicle status and assignments.'}), 400
+                    ).first()
 
+                    if not vehicle_in_use:
+                        route.vehicle_id = available_driver.vehicle.id
+                        print(f"Using driver's assigned vehicle: {available_driver.vehicle.plate_number}")
+                    else:
+                        # Şoförün aracı müsait değilse, başka müsait araç bul
+                        available_vehicle = db.query(Vehicle).filter(
+                            Vehicle.company_id == company_id,
+                            Vehicle.status == VehicleStatus.ACTIVE,
+                            ~Vehicle.id.in_(
+                                db.query(Route.vehicle_id).filter(
+                                    Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS])
+                                )
+                            )
+                        ).order_by(Vehicle.capacity.desc()).first()
+
+                        if available_vehicle:
+                            route.vehicle_id = available_vehicle.id
+                            print(f"Using available vehicle: {available_vehicle.plate_number}")
+                            # Şoförü bu araca ata
+                            available_vehicle.driver_id = available_driver.id
+                        else:
+                            print("No available vehicle found for this route.")
+                            return jsonify({'error': 'No available vehicle for the route.'}), 400
+                else:
+                    # Şoförün atanmış aracı yoksa, müsait araç bul
+                    available_vehicle = db.query(Vehicle).filter(
+                        Vehicle.company_id == company_id,
+                        Vehicle.status == VehicleStatus.ACTIVE,
+                        ~Vehicle.id.in_(
+                            db.query(Route.vehicle_id).filter(
+                                Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS])
+                            )
+                        )
+                    ).order_by(Vehicle.capacity.desc()).first()
+
+                    if available_vehicle:
+                        route.vehicle_id = available_vehicle.id
+                        print(f"Using available vehicle: {available_vehicle.plate_number}")
+                        # Şoförü bu araca ata
+                        available_vehicle.driver_id = available_driver.id
+                    else:
+                        print("No available vehicle found for this route.")
+                        return jsonify({'error': 'No available vehicle for the route.'}), 400
+            else:
+                print("No available driver found for this route.")
+                return jsonify({'error': 'No available driver for the route.'}), 400
+            
+            # Veritabanına kaydetmeden önce debug bilgisi yazdır
+            print(f"Attempting to save route to database: {route.__dict__}")
             db.add(route)
-            db.flush()
+            db.flush()  # Veritabanına eklemeden önce nesneyi güncelle
             
             # Route Details ekle
             route_points = []
@@ -303,6 +314,11 @@ def optimize_route():
                 'demand': 0,
                 'type': 'depot'
             })
+            
+            prev_point = {
+                'lat': warehouse.latitude,
+                'lng': warehouse.longitude
+            }
             
             # Müşteri noktaları
             for i, customer_id in enumerate(sub_route, 1):
@@ -363,93 +379,6 @@ def optimize_route():
             
             # Debug bilgisi ekle
             print(f"Route {sub_route_index + 1} - Distance: {total_distance:.2f} km, Demand: {total_demand:.2f}")
-            print(f"Route details: {route.__dict__}")  # Rota nesnesinin detaylarını yazdır
-            
-            routes_response.append({
-                'points': route_points,
-                'total_distance': float(total_distance),
-                'total_demand': float(total_demand),
-                'total_duration': int(total_distance * 2),
-                'vehicle': available_vehicle.plate_number if available_vehicle else None,
-                'driver': f"{available_driver.user.first_name} {available_driver.user.last_name}" if available_driver else None
-            })
-            
-            # Veritabanına kaydetmeden önce debug bilgisi yazdır
-            print(f"Attempting to save route to database: {route.__dict__}")
-            db.add(route)
-            db.flush()  # Veritabanına eklemeden önce nesneyi güncelle
-            
-            # Route Details ekle
-            route_points = []
-            total_distance = 0
-            total_demand = 0
-            prev_point = None
-            
-            # Depo başlangıç noktası
-            route_points.append({
-                'lat': warehouse.latitude,
-                'lng': warehouse.longitude,
-                'name': warehouse.name,
-                'demand': 0,
-                'type': 'depot'
-            })
-            
-            # Müşteri noktaları
-            for i, customer_id in enumerate(sub_route, 1):
-                customer = selected_customers[customer_id - 1]
-                route_detail = RouteDetail(
-                    route_id=route.id,
-                    customer_id=customer.id,
-                    sequence_number=i,
-                    demand=customer.desi,
-                    status='pending',
-                    created_at=func.now(),
-                    updated_at=func.now()
-                )
-                db.add(route_detail)
-                
-                route_points.append({
-                    'lat': customer.latitude,
-                    'lng': customer.longitude,
-                    'name': customer.name,
-                    'demand': float(customer.desi),
-                    'type': 'customer'
-                })
-                
-                total_demand += customer.desi
-                
-                if prev_point:
-                    leg_distance = map_handler.get_distance(
-                        (prev_point['lat'], prev_point['lng']),
-                        (customer.latitude, customer.longitude)
-                    )
-                    total_distance += leg_distance
-                
-                prev_point = {
-                    'lat': customer.latitude,
-                    'lng': customer.longitude
-                }
-            
-            # Depoya dönüş
-            if prev_point:
-                leg_distance = map_handler.get_distance(
-                    (prev_point['lat'], prev_point['lng']),
-                    (warehouse.latitude, warehouse.longitude)
-                )
-                total_distance += leg_distance
-            
-            route_points.append({
-                'lat': warehouse.latitude,
-                'lng': warehouse.longitude,
-                'name': warehouse.name,
-                'demand': 0,
-                'type': 'depot'
-            })
-            
-            # Route bilgilerini güncelle
-            route.total_distance = total_distance
-            route.total_demand = total_demand
-            route.total_duration = int(total_distance * 2)  # Yaklaşık süre (dakika)
             
             routes_response.append({
                 'points': route_points,
@@ -685,6 +614,7 @@ def edit_customer(customer_id):
             customer.contact_phone = request.form.get('contact_phone')
             customer.email = request.form.get('email')
             customer.priority = int(request.form.get('priority', 0))
+            customer.desi = float(request.form.get('desi', 0))
             customer.notes = request.form.get('notes')
             
             db.commit()
@@ -704,13 +634,26 @@ def delete_customer(customer_id):
         employee = db.query(CompanyEmployee).filter_by(user_id=session['user_id']).first()
         customer = db.query(Customer).filter_by(id=customer_id, company_id=employee.company_id).first()
         
-        if customer:
-            db.delete(customer)
-            db.commit()
-            flash('Müşteri başarıyla silindi.', 'success')
-        else:
+        if not customer:
             flash('Müşteri bulunamadı.', 'danger')
+            return redirect(url_for('company_dashboard'))
             
+        # Müşterinin rotalarda kullanılıp kullanılmadığını kontrol et
+        route_details = db.query(RouteDetail).filter_by(customer_id=customer_id).first()
+        if route_details:
+            flash('Bu müşteri rotalarda kullanıldığı için silinemiyor.', 'warning')
+            return redirect(url_for('company_dashboard'))
+            
+        db.delete(customer)
+        db.commit()
+        flash('Müşteri başarıyla silindi.', 'success')
+        
+        return redirect(url_for('company_dashboard'))
+    except Exception as e:
+        db.rollback()
+        print(f"Error in delete_customer: {str(e)}")
+        traceback.print_exc()
+        flash('Müşteri silinirken bir hata oluştu.', 'danger')
         return redirect(url_for('company_dashboard'))
     finally:
         db.close()
@@ -1048,31 +991,47 @@ def update_stop_status(route_id, stop_id):
         route = db.query(Route).filter_by(id=route_id, driver_id=driver.id).first()
         
         if not route:
+            print(f"Route not found: {route_id} for driver: {driver.id}")
             return jsonify({'error': 'Rota bulunamadı'}), 404
             
         # Durak detayını bul
         stop = db.query(RouteDetail).filter_by(id=stop_id, route_id=route_id).first()
         if not stop:
+            print(f"Stop not found: {stop_id} for route: {route_id}")
             return jsonify({'error': 'Durak bulunamadı'}), 404
             
         data = request.json
         new_status = data.get('status')
         notes = data.get('notes')
         
+        print(f"Updating stop {stop_id} status from {stop.status} to {new_status}")
+        
         if new_status not in ['pending', 'completed', 'failed', 'skipped']:
             return jsonify({'error': 'Geçersiz durum'}), 400
             
+        # Durum değişikliğini kaydet
         stop.status = new_status
         stop.notes = notes
         
+        # Tamamlandı ise varış zamanını kaydet
         if new_status == 'completed':
             stop.actual_arrival_time = func.now()
+            print(f"Setting actual arrival time for stop {stop_id}")
         
+        # Başarısız ise başarısızlık zamanını kaydet
+        if new_status == 'failed':
+            stop.actual_arrival_time = func.now()
+            print(f"Setting failure time for stop {stop_id}")
+        
+        # Değişiklikleri kaydet
         db.commit()
+        print(f"Successfully updated stop {stop_id} status to {new_status}")
+        
         return jsonify({'success': True})
     except Exception as e:
         db.rollback()
         print(f"Error updating stop status: {str(e)}")
+        traceback.print_exc()  # Hata stack trace'ini yazdır
         return jsonify({'error': str(e)}), 500
     finally:
         db.close()
@@ -1236,30 +1195,44 @@ def company_edit_warehouse(warehouse_id):
     finally:
         db.close()
 
-@app.route('/company/warehouse/<int:warehouse_id>/delete', methods=['POST'])
+@app.route('/company/warehouse/delete/<int:warehouse_id>', methods=['POST'])
 @login_required
 @company_admin_required
-def company_delete_warehouse(warehouse_id):
+def company_delete_warehouse_page(warehouse_id):
     db = SessionLocal()
     try:
+        # Şirket yöneticisinin şirketini bul
         employee = db.query(CompanyEmployee).filter_by(user_id=session['user_id']).first()
+        if not employee:
+            flash('Şirket bilgisi bulunamadı.', 'danger')
+            return redirect(url_for('index'))
+            
+        # Depoyu bul
         warehouse = db.query(Warehouse).filter_by(id=warehouse_id, company_id=employee.company_id).first()
-        
         if not warehouse:
-            flash('Depo bulunamadı.', 'danger')
+            flash('Depo bulunamadı veya bu depoyu silme yetkiniz yok.', 'danger')
             return redirect(url_for('company_dashboard'))
             
-        # Deponun kullanımda olup olmadığını kontrol et
-        if db.query(Route).filter_by(warehouse_id=warehouse_id).count() > 0:
-            flash('Bu depo rotalarda kullanıldığı için silinemiyor.', 'danger')
+        # Deponun kullanıldığı rotaları kontrol et
+        routes_using_warehouse = db.query(Route).filter_by(warehouse_id=warehouse_id).count()
+        if routes_using_warehouse > 0:
+            flash('Bu depo rotalar tarafından kullanılıyor ve silinemiyor.', 'warning')
             return redirect(url_for('company_dashboard'))
             
+        # Depoyu sil
         db.delete(warehouse)
         db.commit()
+        
         flash('Depo başarıyla silindi.', 'success')
-        return redirect(url_for('company_dashboard'))
+    except Exception as e:
+        db.rollback()
+        print(f"Error in company_delete_warehouse: {str(e)}")
+        traceback.print_exc()
+        flash('Depo silinirken bir hata oluştu.', 'danger')
     finally:
         db.close()
+        
+    return redirect(url_for('company_dashboard'))
 
 def calculate_total_vehicle_capacity(company_id):
     db = SessionLocal()
@@ -1304,12 +1277,19 @@ def delete_route(route_id):
 
 @app.route('/api/company/route/<int:route_id>/delete', methods=['POST'])
 @login_required
-@company_admin_required
 def company_delete_route(route_id):
     db = SessionLocal()
     try:
-        # Şirket yöneticisinin yetkisini kontrol et
+        # Check if user is company admin or manager
+        if 'user_role' not in session or (session['user_role'] != 'company_admin' and session['user_role'] != 'manager'):
+            return jsonify({'error': 'Bu işlem için yetkiniz yok'}), 403
+        
+        # Get user's company
         employee = db.query(CompanyEmployee).filter_by(user_id=session['user_id']).first()
+        if not employee:
+            return jsonify({'error': 'Şirket bilgisi bulunamadı'}), 404
+            
+        # Find the route
         route = db.query(Route).filter_by(id=route_id, company_id=employee.company_id).first()
         
         if not route:
@@ -1330,6 +1310,96 @@ def company_delete_route(route_id):
     except Exception as e:
         db.rollback()
         print(f"Error deleting route: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route('/company/route/delete/<int:route_id>', methods=['POST'])
+@login_required
+def company_delete_route_page(route_id):
+    db = SessionLocal()
+    try:
+        # Check if user is company admin or manager
+        if 'user_role' not in session or (session['user_role'] != 'company_admin' and session['user_role'] != 'manager'):
+            flash('Bu sayfaya erişim yetkiniz yok.', 'danger')
+            return redirect(url_for('index'))
+        
+        # Get user's company
+        if session['user_role'] == 'company_admin':
+            employee = db.query(CompanyEmployee).filter_by(user_id=session['user_id']).first()
+        else:  # manager
+            employee = db.query(CompanyEmployee).filter_by(user_id=session['user_id']).first()
+            
+        if not employee:
+            flash('Şirket bilgisi bulunamadı.', 'danger')
+            return redirect(url_for('index'))
+            
+        # Rotayı bul
+        route = db.query(Route).filter_by(id=route_id, company_id=employee.company_id).first()
+        if not route:
+            flash('Rota bulunamadı veya bu rotayı silme yetkiniz yok.', 'danger')
+            return redirect(url_for('company_dashboard'))
+            
+        # Sadece planlanan rotalar silinebilir
+        if route.status != RouteStatus.PLANNED:
+            flash('Sadece planlanan rotalar silinebilir.', 'warning')
+            return redirect(url_for('company_dashboard'))
+            
+        # Önce rota detaylarını sil
+        db.query(RouteDetail).filter_by(route_id=route_id).delete()
+        
+        # Sonra rotayı sil
+        db.delete(route)
+        db.commit()
+        
+        flash('Rota başarıyla silindi.', 'success')
+    except Exception as e:
+        db.rollback()
+        print(f"Error in company_delete_route: {str(e)}")
+        traceback.print_exc()
+        flash('Rota silinirken bir hata oluştu.', 'danger')
+    finally:
+        db.close()
+        
+    return redirect(url_for('company_dashboard'))
+
+@app.route('/api/route/<int:route_id>/stop/<int:stop_id>/note', methods=['POST'])
+@login_required
+@driver_required
+def add_stop_note(route_id, stop_id):
+    db = SessionLocal()
+    try:
+        # Şoförün yetkisini kontrol et
+        driver = db.query(Driver).filter_by(user_id=session['user_id']).first()
+        route = db.query(Route).filter_by(id=route_id, driver_id=driver.id).first()
+        
+        if not route:
+            print(f"Route not found: {route_id} for driver: {driver.id}")
+            return jsonify({'error': 'Rota bulunamadı'}), 404
+            
+        # Durak detayını bul
+        stop = db.query(RouteDetail).filter_by(id=stop_id, route_id=route_id).first()
+        if not stop:
+            print(f"Stop not found: {stop_id} for route: {route_id}")
+            return jsonify({'error': 'Durak bulunamadı'}), 404
+            
+        data = request.json
+        notes = data.get('notes')
+        
+        print(f"Adding note to stop {stop_id}: {notes}")
+        
+        # Notu kaydet
+        stop.notes = notes
+        
+        # Değişiklikleri kaydet
+        db.commit()
+        print(f"Successfully added note to stop {stop_id}")
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        db.rollback()
+        print(f"Error adding note to stop: {str(e)}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
     finally:
         db.close()

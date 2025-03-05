@@ -34,9 +34,9 @@
                     </a>
                 </div>
                 <div class="card-body">
-                    <div class="table-responsive">
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                         <table class="table table-dark table-hover">
-                            <thead>
+                            <thead style="position: sticky; top: 0; background-color: #212529; z-index: 1;">
                                 <tr>
                                     <th>Ad</th>
                                     <th>Adres</th>
@@ -50,17 +50,8 @@
                                 {% for customer in customers %}
                                 <tr>
                                     <td>{{ customer.name }}</td>
-                                    <td>
-                                        {{ customer.address }}<br>
-                                        <small class="text-muted">
-                                            ({{ customer.latitude }}, {{ customer.longitude }})
-                                        </small>
-                                    </td>
-                                    <td>
-                                        {{ customer.contact_person }}<br>
-                                        {{ customer.contact_phone }}<br>
-                                        <small>{{ customer.email }}</small>
-                                    </td>
+                                    <td>{{ customer.address }}</td>
+                                    <td>{{ customer.contact_person }}<br>{{ customer.contact_phone }}</td>
                                     <td>{{ "%.2f"|format(customer.desi|float) }}</td>
                                     <td>
                                         <span class="badge bg-{{ 'danger' if customer.priority > 7 else 'warning' if customer.priority > 4 else 'info' }}">
@@ -301,9 +292,16 @@
                                     <td>
                                         <span class="badge bg-{{ 'success' if route.status.value == 'completed' 
                                             else 'warning' if route.status.value == 'in_progress' 
-                                            else 'danger' if route.status.value == 'cancelled'
+                                            else 'danger' if route.status.value == 'failed' or route.status.value == 'cancelled'
+                                            else 'secondary' if route.status.value == 'skipped'
                                             else 'info' }}">
-                                            {{ route.status.value }}
+                                            {{ 'Tamamlandı' if route.status.value == 'completed'
+                                               else 'Devam Ediyor' if route.status.value == 'in_progress'
+                                               else 'Başarısız' if route.status.value == 'failed'
+                                               else 'İptal Edildi' if route.status.value == 'cancelled'
+                                               else 'Atlandı' if route.status.value == 'skipped'
+                                               else 'Planlandı' if route.status.value == 'planned'
+                                               else route.status.value }}
                                         </span>
                                     </td>
                                     <td>
@@ -315,7 +313,7 @@
                                                 <i class="bi bi-pencil"></i>
                                             </button>
                                             {% if route.status.value == 'planned' %}
-                                            <button class="btn btn-danger delete-route" data-id="{{ route.id }}" onclick="deleteRoute({{ route.id }})">
+                                            <button class="btn btn-danger delete-route" data-id="{{ route.id }}">
                                                 <i class="bi bi-trash"></i>
                                             </button>
                                             {% endif %}
@@ -332,13 +330,13 @@
     </div>
 </div>
 
-<!-- Müşteri Silme Modal -->
-<div class="modal fade" id="deleteCustomerModal" tabindex="-1">
+<!-- Müşteri Silme Modalı -->
+<div class="modal fade" id="deleteCustomerModal" tabindex="-1" aria-labelledby="deleteCustomerModalLabel" aria-hidden="true">
     <div class="modal-dialog">
-        <div class="modal-content bg-dark">
+        <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Müşteri Sil</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="deleteCustomerModalLabel">Müşteri Sil</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p>Bu müşteriyi silmek istediğinizden emin misiniz?</p>
@@ -458,14 +456,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="createRouteForm">
-                    <div class="mb-3">
-                        <label for="numCustomers" class="form-label">Müşteri Sayısı</label>
-                        <input type="number" class="form-control" id="numCustomers" 
-                               min="2" max="15" value="5" required>
-                        <div class="form-text">En az 2, en fazla 15 müşteri seçilebilir.</div>
-                    </div>
-                </form>
+                <p>Tüm müşteriler için yeni bir rota oluşturulacak. Devam etmek istiyor musunuz?</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
@@ -493,13 +484,13 @@
     </div>
 </div>
 
-<!-- Depo Silme Modal -->
-<div class="modal fade" id="deleteWarehouseModal" tabindex="-1">
+<!-- Depo Silme Modalı -->
+<div class="modal fade" id="deleteWarehouseModal" tabindex="-1" aria-labelledby="deleteWarehouseModalLabel" aria-hidden="true">
     <div class="modal-dialog">
-        <div class="modal-content bg-dark">
+        <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Depo Sil</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="deleteWarehouseModalLabel">Depo Sil</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p>Bu depoyu silmek istediğinizden emin misiniz?</p>
@@ -514,60 +505,124 @@
         </div>
     </div>
 </div>
+
+<!-- Rota Silme Modalı -->
+<div class="modal fade" id="deleteRouteModal" tabindex="-1" aria-labelledby="deleteRouteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteRouteModalLabel">Rota Sil</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bu rotayı silmek istediğinizden emin misiniz?</p>
+                <p class="text-danger">Bu işlem geri alınamaz.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <form id="deleteRouteForm" method="POST">
+                    <button type="submit" class="btn btn-danger">Sil</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/route-map.js') }}"></script>
 <script>
-// Event Listeners
 document.addEventListener('DOMContentLoaded', function() {
-    // Müşteri işlemleri
+    // Rota detayları modalı için event listener
+    document.querySelectorAll('.view-route').forEach(button => {
+        button.addEventListener('click', function() {
+            const routeId = this.dataset.id;
+            // Ortak fonksiyonu kullan
+            showRouteDetails(routeId, 'routeDetailsModal', 'routeMap', 'routeInfo', 'routeStops', false);
+        });
+    });
+
+    // Rota silme modalı için event listener
+    document.querySelectorAll('.delete-route').forEach(button => {
+        button.addEventListener('click', function() {
+            const routeId = this.dataset.id;
+            const deleteRouteForm = document.getElementById('deleteRouteForm');
+            deleteRouteForm.action = `/company/route/delete/${routeId}`;
+            const modal = new bootstrap.Modal(document.getElementById('deleteRouteModal'));
+            modal.show();
+        });
+    });
+
+    // Depo silme modalı için event listener
+    document.querySelectorAll('.delete-warehouse').forEach(button => {
+        button.addEventListener('click', function() {
+            const warehouseId = this.dataset.id;
+            const warehouseName = this.dataset.name;
+            document.getElementById('deleteWarehouseName').textContent = warehouseName;
+            const deleteWarehouseForm = document.getElementById('deleteWarehouseForm');
+            deleteWarehouseForm.action = `/company/warehouse/delete/${warehouseId}`;
+            const modal = new bootstrap.Modal(document.getElementById('deleteWarehouseModal'));
+            modal.show();
+        });
+    });
+
+    // Yeni Rota Oluştur butonu için event listener
+    document.getElementById('createRouteBtn').addEventListener('click', async function() {
+        const createRouteBtn = this;
+        
+        // Buton durumunu güncelle
+        createRouteBtn.disabled = true;
+        createRouteBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> İşleniyor...';
+        
+        try {
+            const response = await fetch('/api/optimize', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    num_customers: 0
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Rota oluşturma sırasında bir hata oluştu');
+            }
+            
+            const data = await response.json();
+            
+            if (!data.success) {
+                throw new Error(data.error || 'Bilinmeyen bir hata oluştu');
+            }
+            
+            // Başarılı olduğunda sayfayı yenile
+            alert('Rota başarıyla oluşturuldu: ' + data.message);
+            window.location.reload();
+            
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Hata: ' + error.message);
+        } finally {
+            // Buton durumunu sıfırla
+            createRouteBtn.disabled = false;
+            createRouteBtn.textContent = 'Rota Oluştur';
+            
+            // Modalı kapat
+            const modal = bootstrap.Modal.getInstance(document.getElementById('createRouteModal'));
+            if (modal) {
+                modal.hide();
+            }
+        }
+    });
+
+    // Müşteri silme butonlarına event listener'ları ekle
     document.querySelectorAll('.delete-customer').forEach(button => {
         button.addEventListener('click', function() {
             const customerId = this.dataset.id;
             const customerName = this.dataset.name;
             deleteCustomer(customerId, customerName);
-        });
-    });
-
-    // Araç işlemleri
-    document.querySelectorAll('.edit-vehicle').forEach(button => {
-        button.addEventListener('click', function() {
-            editVehicle(this.dataset.id);
-        });
-    });
-
-    document.querySelectorAll('.delete-vehicle').forEach(button => {
-        button.addEventListener('click', function() {
-            deleteVehicle(this.dataset.id);
-        });
-    });
-
-    // Şoför işlemleri
-    document.querySelectorAll('.edit-driver').forEach(button => {
-        button.addEventListener('click', function() {
-            editDriver(this.dataset.id);
-        });
-    });
-
-    document.querySelectorAll('.delete-driver').forEach(button => {
-        button.addEventListener('click', function() {
-            deleteDriver(this.dataset.id);
-        });
-    });
-
-    // Rota işlemleri
-    document.querySelectorAll('.view-route').forEach(button => {
-        button.addEventListener('click', function() {
-            showRouteDetails(this.dataset.id);
-        });
-    });
-
-    // Depo işlemleri
-    document.querySelectorAll('.delete-warehouse').forEach(button => {
-        button.addEventListener('click', function() {
-            const warehouseId = this.dataset.id;
-            const warehouseName = this.dataset.name;
-            deleteWarehouse(warehouseId, warehouseName);
         });
     });
 });
@@ -577,316 +632,6 @@ function deleteCustomer(customerId, customerName) {
     document.getElementById('deleteCustomerName').textContent = customerName;
     document.getElementById('deleteCustomerForm').action = `/company/customer/${customerId}/delete`;
     modal.show();
-}
-
-function editVehicle(vehicleId) {
-    fetch(`/company/vehicle/${vehicleId}`)
-        .then(response => response.json())
-        .then(vehicle => {
-            document.getElementById('plate_number').value = vehicle.plate_number;
-            document.getElementById('brand').value = vehicle.brand;
-            document.getElementById('model').value = vehicle.model;
-            document.getElementById('capacity').value = vehicle.capacity;
-            document.getElementById('driver_id').value = vehicle.driver_id || '';
-            
-            const modal = new bootstrap.Modal(document.getElementById('addVehicleModal'));
-            document.querySelector('#addVehicleModal .modal-title').textContent = 'Araç Düzenle';
-            document.querySelector('#addVehicleModal .btn-primary').onclick = () => saveVehicle(vehicleId);
-            modal.show();
-        });
-}
-
-function deleteVehicle(vehicleId) {
-    if (confirm('Bu aracı silmek istediğinizden emin misiniz?')) {
-        fetch(`/company/vehicle/${vehicleId}/delete`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                location.reload();
-            }
-        });
-    }
-}
-
-function editDriver(driverId) {
-    // TODO: Implement driver editing
-    alert('Şoför düzenleme özelliği yakında eklenecek!');
-}
-
-function deleteDriver(driverId) {
-    if (confirm('Bu şoförü silmek istediğinizden emin misiniz?')) {
-        // TODO: Implement driver deletion
-        alert('Şoför silme özelliği yakında eklenecek!');
-    }
-}
-
-function saveVehicle(vehicleId = null) {
-    const data = {
-        plate_number: document.getElementById('plate_number').value,
-        brand: document.getElementById('brand').value,
-        model: document.getElementById('model').value,
-        capacity: document.getElementById('capacity').value,
-        driver_id: document.getElementById('driver_id').value || null
-    };
-
-    const url = vehicleId ? `/company/vehicle/${vehicleId}/edit` : '/company/vehicle/add';
-    
-    fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(data)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            location.reload();
-        }
-    });
-}
-
-function saveDriver() {
-    const password = document.getElementById('password').value;
-    const passwordConfirm = document.getElementById('password_confirm').value;
-    
-    if (password !== passwordConfirm) {
-        alert('Şifreler eşleşmiyor!');
-        return;
-    }
-
-    const data = {
-        first_name: document.getElementById('first_name').value,
-        last_name: document.getElementById('last_name').value,
-        email: document.getElementById('email').value,
-        password: password,
-        license_number: document.getElementById('license_number').value,
-        experience: parseInt(document.getElementById('experience').value)
-    };
-
-    fetch('/company/driver/add', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(data)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Giriş bilgilerini göster
-            alert(`Şoför başarıyla eklendi!\n\nGiriş bilgileri:\nEmail: ${data.credentials.email}\nŞifre: ${data.credentials.password}`);
-            location.reload();
-        } else {
-            alert('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu'));
-        }
-    })
-    .catch(error => {
-        alert('Hata: ' + error.message);
-    });
-}
-
-document.getElementById('createRouteBtn').addEventListener('click', async function() {
-    const button = this;
-    const numCustomers = document.getElementById('numCustomers').value;
-    
-    button.disabled = true;
-    button.innerHTML = '<span class="spinner-border spinner-border-sm"></span> İşleniyor...';
-    
-    try {
-        const response = await fetch('/api/optimize', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                num_customers: parseInt(numCustomers)
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            // Show success message
-            const message = `${data.message || 'Rotalar başarıyla oluşturuldu.'}\n\n` + 
-                          data.routes.map((route, index) => {
-                              const totalDemand = route.total_demand || 0;
-                              return `Rota ${index + 1}:\n` +
-                                    `Durak Sayısı: ${route.points.length - 2}\n` + // Başlangıç ve bitiş depoları çıkarılıyor
-                                    `Toplam Yük: ${totalDemand.toFixed(2)}`;
-                          }).join('\n\n');
-                          
-            alert(message);
-            location.reload();  // Refresh page to show new routes
-        } else {
-            alert('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu'));
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('Bir hata oluştu: ' + error.message);
-    } finally {
-        button.disabled = false;
-        button.textContent = 'Rota Oluştur';
-        bootstrap.Modal.getInstance(document.getElementById('createRouteModal')).hide();
-    }
-});
-
-let routeMap = null;
-let routeMarkers = [];
-let routePolylines = [];
-
-function showRouteDetails(routeId) {
-    const modal = new bootstrap.Modal(document.getElementById('routeDetailsModal'));
-    modal.show();
-    
-    document.getElementById('routeDetailsModal').addEventListener('shown.bs.modal', function () {
-        if (!routeMap) {
-            routeMap = L.map('routeMap');
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(routeMap);
-        }
-        
-        routeMarkers.forEach(marker => routeMap.removeLayer(marker));
-        routePolylines.forEach(line => routeMap.removeLayer(line));
-        routeMarkers = [];
-        routePolylines = [];
-        
-        fetch(`/api/route/${routeId}`)
-            .then(response => response.json())
-            .then(data => {
-                const bounds = L.latLngBounds();
-                
-                // Depo
-                if (data.warehouse) {
-                    const depot = L.marker(
-                        [data.warehouse.latitude, data.warehouse.longitude],
-                        {
-                            icon: L.divIcon({
-                                className: 'depot-marker',
-                                html: '<div style="background-color: #198754;">D</div>'
-                            })
-                        }
-                    ).bindPopup(`
-                        <strong>${data.warehouse.name}</strong><br>
-                        ${data.warehouse.address}
-                    `);
-                    
-                    routeMarkers.push(depot);
-                    depot.addTo(routeMap);
-                    bounds.extend([data.warehouse.latitude, data.warehouse.longitude]);
-                }
-                
-                // Duraklar
-                data.stops.forEach((stop, index) => {
-                    const marker = L.marker(
-                        [stop.customer.latitude, stop.customer.longitude],
-                        {
-                            icon: L.divIcon({
-                                className: 'customer-marker',
-                                html: `<div style="background-color: ${getStatusColor(stop.status)};">${index + 1}</div>`
-                            })
-                        }
-                    ).bindPopup(`
-                        <strong>${stop.customer.name}</strong><br>
-                        ${stop.customer.address}<br>
-                        <small>
-                            <strong>İletişim:</strong> ${stop.customer.contact_person}<br>
-                            <strong>Telefon:</strong> ${stop.customer.contact_phone}<br>
-                            <strong>Desi:</strong> ${stop.demand}<br>
-                            <strong>Durum:</strong> ${getStatusText(stop.status)}
-                        </small>
-                    `);
-                    
-                    routeMarkers.push(marker);
-                    marker.addTo(routeMap);
-                    bounds.extend([stop.customer.latitude, stop.customer.longitude]);
-                });
-                
-                routeMap.fitBounds(bounds, { padding: [50, 50] });
-                routeMap.invalidateSize();
-                
-                // Rota bilgileri
-                document.getElementById('routeInfo').innerHTML = `
-                    <div class="route-details">
-                        <h6>Rota Bilgileri</h6>
-                        <p>
-                            <strong>Şoför:</strong> ${data.driver ? `${data.driver.user.first_name} ${data.driver.user.last_name}` : 'Atanmamış'}<br>
-                            <strong>Araç:</strong> ${data.vehicle ? data.vehicle.plate_number : 'Atanmamış'}<br>
-                            <strong>Toplam Mesafe:</strong> ${data.total_distance?.toFixed(1)} km<br>
-                            <strong>Toplam Desi:</strong> ${data.total_demand?.toFixed(2)}<br>
-                            <strong>Durum:</strong> ${getStatusText(data.status)}
-                        </p>
-                    </div>
-                `;
-            });
-    });
-}
-
-function getStatusColor(status) {
-    switch (status) {
-        case 'completed': return '#198754';
-        case 'failed': return '#dc3545';
-        case 'skipped': return '#6c757d';
-        default: return '#0d6efd';
-    }
-}
-
-function getStatusText(status) {
-    switch (status) {
-        case 'planned': return 'Planlandı';
-        case 'in_progress': return 'Devam Ediyor';
-        case 'completed': return 'Tamamlandı';
-        case 'failed': return 'Başarısız';
-        case 'skipped': return 'Atlandı';
-        case 'cancelled': return 'İptal Edildi';
-        default: return status;
-    }
-}
-
-function deleteWarehouse(warehouseId, warehouseName) {
-    const modal = new bootstrap.Modal(document.getElementById('deleteWarehouseModal'));
-    document.getElementById('deleteWarehouseName').textContent = warehouseName;
-    document.getElementById('deleteWarehouseForm').action = `/company/warehouse/${warehouseId}/delete`;
-    modal.show();
-}
-
-function deleteRoute(routeId) {
-    if (!confirm('Bu rotayı silmek istediğinizden emin misiniz?')) {
-        return;
-    }
-    
-    fetch(`/api/company/route/${routeId}/delete`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => {
-        if (!response.ok) {
-            if (response.status === 404) {
-                throw new Error('Rota bulunamadı');
-            } else if (response.status === 400) {
-                throw new Error('Bu rota silinemez');
-            }
-            throw new Error('API yanıtı başarısız: ' + response.status);
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            location.reload();
-        } else {
-            alert('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Hata: ' + error.message);
-    });
 }
 </script>
 {% endblock %} 
