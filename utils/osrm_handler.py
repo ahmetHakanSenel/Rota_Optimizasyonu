@@ -4,6 +4,7 @@ import numpy as np
 import os
 import pickle
 import time
+from .elevation_handler import ElevationHandler
 
 class OSRMHandler:
     """Handler for OSRM (Open Source Routing Machine) API requests."""
@@ -19,6 +20,8 @@ class OSRMHandler:
         self.distance_matrix = {}
         self.timeout = 60
         self.max_retries = 3
+        self.elevation_handler = ElevationHandler()
+        self.elevation_weight = 0.3  # Yükseklik faktörünün ağırlığı (0-1 arası)
         self._initialize_cache()
     
     def _initialize_cache(self):
@@ -47,44 +50,67 @@ class OSRMHandler:
         except Exception as e:
             print(f"Error saving cache: {e}")
     
-    def get_distance(self, origin: Tuple[float, float], dest: Tuple[float, float]) -> float:
-        """Get the distance between two points from cache."""
-        key = (tuple(origin), tuple(dest))
-        reverse_key = (tuple(dest), tuple(origin))
+    def get_route_details(self, origin: Tuple[float, float], dest: Tuple[float, float]) -> Dict:
+        """İki nokta arasındaki rota detaylarını al"""
+        url = f"{self.base_url}/route/v1/driving/{origin[1]},{origin[0]};{dest[1]},{dest[0]}"
+        params = {
+            "overview": "full",
+            "geometries": "geojson",
+            "steps": "true"
+        }
         
-        if key in self.distance_matrix:
-            return self.distance_matrix[key]
-        if reverse_key in self.distance_matrix:
-            return self.distance_matrix[reverse_key]
-        
-        # Eğer mesafe önbellekte yoksa, doğrudan OSRM'den almayı dene
         try:
-            # Koordinatları formatlayın
-            origin_str = f"{origin[1]},{origin[0]}"
-            dest_str = f"{dest[1]},{dest[0]}"
-            
-            # OSRM route servisine istek yap
-            url = f"{self.base_url}/route/v1/driving/{origin_str};{dest_str}"
-            params = {
-                'overview': 'false',
-                'alternatives': 'false'
-            }
-            
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(url, params=params)
             data = response.json()
             
-            if response.status_code == 200 and "routes" in data and len(data["routes"]) > 0:
-                # Mesafeyi kilometre cinsinden al
-                distance = data["routes"][0]["distance"] / 1000
-                self.distance_matrix[key] = distance
-                return distance
+            if data["code"] != "Ok" or not data["routes"]:
+                return None
+                
+            route = data["routes"][0]
+            coordinates = [(coord[1], coord[0]) for coord in route["geometry"]["coordinates"]]
             
-            print(f"Warning: Could not get distance from OSRM for {key}")
+            # Yükseklik profilini hesapla
+            elevation_profile = self.elevation_handler.get_path_elevation_profile(coordinates)
+            
+            return {
+                "distance": route["distance"] / 1000,  # km cinsinden
+                "duration": route["duration"] / 60,    # dakika cinsinden
+                "coordinates": coordinates,
+                "elevation_profile": elevation_profile
+            }
+        except Exception as e:
+            print(f"Error getting route details: {str(e)}")
+            return None
+            
+    def get_distance(self, origin: Tuple[float, float], dest: Tuple[float, float]) -> float:
+        """İki nokta arasındaki ağırlıklı mesafeyi hesapla"""
+        cache_key = (tuple(origin), tuple(dest))
+        reverse_key = (tuple(dest), tuple(origin))
+        
+        if cache_key in self.distance_matrix:
+            return self.distance_matrix[cache_key]
+        if reverse_key in self.distance_matrix:
+            return self.distance_matrix[reverse_key]
+            
+        route_details = self.get_route_details(origin, dest)
+        if not route_details:
             return float('inf')
             
-        except Exception as e:
-            print(f"Error getting distance from OSRM: {e}")
-        return float('inf')
+        # Temel mesafe (km)
+        base_distance = route_details["distance"]
+        
+        # Yükseklik zorluğuna göre ek maliyet
+        elevation_difficulty = route_details["elevation_profile"]["elevation_difficulty"]
+        elevation_penalty = base_distance * elevation_difficulty * self.elevation_weight
+        
+        # Toplam ağırlıklı mesafe
+        weighted_distance = base_distance + elevation_penalty
+        
+        # Her iki yön için de önbelleğe al
+        self.distance_matrix[cache_key] = weighted_distance
+        self.distance_matrix[reverse_key] = weighted_distance
+        
+        return weighted_distance
         
     def get_distance_matrix(self, locations: List[Tuple[float, float]]) -> Dict[str, Any]:
         """
@@ -150,6 +176,11 @@ class OSRMHandler:
         Returns:
             Boolean indicating if precomputation was successful
         """
+        # Eğer tüm mesafeler zaten önbellekte varsa, tekrar hesaplama
+        if self._check_all_distances_cached(instance):
+            print("All distances already cached, skipping precomputation...")
+            return True
+            
         print("\nPrecomputing all distances using OSRM table service...")
         
         all_points = []
@@ -200,6 +231,7 @@ class OSRMHandler:
                             if i != j:
                                 distance = distances[i][j] / 1000
                                 self.distance_matrix[(tuple(origin), tuple(dest))] = distance
+                                self.distance_matrix[(tuple(dest), tuple(origin))] = distance
                     
                     print(f"Cached {len(self.distance_matrix)} distances")
                     self.save_cache()
@@ -223,6 +255,35 @@ class OSRMHandler:
         
         print("Failed to compute distance matrix using table service. Falling back to route service...")
         return self._fallback_precompute_distances(all_points)
+    
+    def _check_all_distances_cached(self, instance: Dict) -> bool:
+        """Tüm mesafelerin önbellekte olup olmadığını kontrol et"""
+        all_points = []
+        depot = (instance['depart']['coordinates']['x'], 
+                instance['depart']['coordinates']['y'])
+        all_points.append(depot)
+        
+        i = 1
+        while True:
+            customer_key = f'C_{i}'
+            if customer_key not in instance:
+                break
+            customer = instance[customer_key]
+            point = (customer['coordinates']['x'],
+                    customer['coordinates']['y'])
+            all_points.append(point)
+            i += 1
+            
+        # Tüm nokta çiftleri için kontrol et
+        for i, origin in enumerate(all_points):
+            for j, dest in enumerate(all_points):
+                if i != j:
+                    cache_key = (tuple(origin), tuple(dest))
+                    reverse_key = (tuple(dest), tuple(origin))
+                    if cache_key not in self.distance_matrix and reverse_key not in self.distance_matrix:
+                        return False
+        
+        return True
     
     def _batch_precompute_distances(self, all_points: List[Tuple[float, float]], batch_size: int) -> bool:
         """

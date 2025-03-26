@@ -120,11 +120,11 @@ def optimize_routes(
             
         # Run Tabu Search with adjusted parameters
         result = run_tabu_search(
-            instance_name='custom',
+            instance_data=instance_data,
             individual_size=num_customers,
-            n_gen=1000,
-            tabu_size=30,
-            stagnation_limit=20,
+            n_gen=min(500, num_customers * 20),
+            tabu_size=min(20, num_customers // 2 + 5),
+            stagnation_limit=15,
             vehicle_capacity=float(min_vehicle_capacity)
         )
         

@@ -65,282 +65,276 @@ function getStatusBadgeColor(status) {
  * @param {boolean} isDriverView - Sürücü görünümü mü?
  */
 function showRouteDetails(routeId, modalId, mapId, infoId, stopsId, isDriverView = false) {
-    // Mevcut event listener'ları temizle
-    const modalElement = document.getElementById(modalId);
-    const newModalElement = modalElement.cloneNode(true);
-    modalElement.parentNode.replaceChild(newModalElement, modalElement);
-    
-    // Modal'ı göster
-    const modal = new bootstrap.Modal(document.getElementById(modalId));
-    modal.show();
-    
-    // Harita ve marker değişkenleri
-    let routeMap = null;
-    let routeMarkers = [];
-    let routePolylines = [];
-    
-    // Modal gösterildiğinde haritayı oluştur
-    document.getElementById(modalId).addEventListener('shown.bs.modal', function () {
-        // Harita container'ını temizle
-        const mapContainer = document.getElementById(mapId);
-        mapContainer.innerHTML = '';
+    // Mevcut haritayı temizle
+    const mapContainer = document.getElementById(mapId);
+    if (window.currentRouteMap) {
+        window.currentRouteMap.remove();
+        window.currentRouteMap = null;
+    }
+
+    // Harita container'ını sıfırla
+    mapContainer.innerHTML = '';
         
-        // Haritayı oluştur
-        routeMap = L.map(mapId).setView([39.9334, 32.8597], 10);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(routeMap);
-        
-        // Haritanın boyutunu güncelle
-        setTimeout(() => {
-            routeMap.invalidateSize();
-        }, 300);
-        
-        // Rota verilerini getir
-        fetch(`/api/route/${routeId}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log("Route data received:", data);
-                const bounds = L.latLngBounds();
+    fetch(`/api/route/${routeId}`)
+        .then(response => response.json())
+        .then(data => {
+            // API yanıtı artık doğrudan data objesi olarak geliyor, success.data yapısı yok
+            // Debug: API yanıtını kontrol et
+            console.log('Route API Response:', data);
+            console.log('Driver Info:', data.driver);
+            console.log('Vehicle Info:', data.vehicle);
+            console.log('Total Distance:', data.total_distance);
+            
+            const modal = new bootstrap.Modal(document.getElementById(modalId));
+            
+            // Haritayı oluştur
+            const map = L.map(mapId, {
+                preferCanvas: true,
+                renderer: L.canvas(),
+                zoomControl: true,
+                minZoom: 4,
+                maxZoom: 18
+            });
+            
+            window.currentRouteMap = map;
+            
+            // Tile layer'ı ekle
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 18,
+                tileSize: 256,
+                zoomOffset: 0
+            }).addTo(map);
+
+            // Rota katmanını oluştur
+            const routeLayer = L.featureGroup().addTo(map);
+            let bounds = L.latLngBounds();
+            
+            // Önce depo noktasını ekle
+            if (data.warehouse) {
+                const depotMarker = createMarker(data.warehouse, 'D', true);
+                routeLayer.addLayer(depotMarker);
+                bounds.extend([data.warehouse.latitude, data.warehouse.longitude]);
+            }
                 
-                // Depo
-                if (data.warehouse) {
-                    const depot = L.marker(
-                        [data.warehouse.latitude, data.warehouse.longitude],
-                        {
-                            icon: L.divIcon({
-                                className: 'depot-marker',
-                                html: '<div style="background-color: #198754; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 2px solid white;">D</div>'
-                            })
+            // Müşteri noktalarını ekle
+            data.stops.forEach((stop, index) => {
+                if (!stop.customer || !stop.customer.latitude || !stop.customer.longitude) {
+                    console.warn('Invalid customer data:', stop);
+                    return;
+                }
+                
+                // Müşteri marker'ını ekle
+                const marker = createMarker(stop.customer, index + 1, false);
+                routeLayer.addLayer(marker);
+                bounds.extend([stop.customer.latitude, stop.customer.longitude]);
+            });
+            
+            // Rota çizgilerini ekle
+            if (data.warehouse && data.stops.length > 0) {
+                // Eğer route_geometries varsa, bunları kullan
+                if (data.route_geometries && data.route_geometries.length > 0) {
+                    console.log('Using route geometries from API:', data.route_geometries);
+                    // Her segment için geometri verilerini kullan
+                    data.route_geometries.forEach(segment => {
+                        if (segment.coordinates && segment.coordinates.length > 0) {
+                            // OSRM'den gelen koordinatları Leaflet formatına dönüştür
+                            const coords = segment.coordinates.map(coord => [coord[1], coord[0]]);
+                            const polyline = L.polyline(coords, {
+                                color: '#0d6efd',
+                                weight: 3,
+                                opacity: 0.8
+                            });
+                            routeLayer.addLayer(polyline);
+                            
+                            // Sınırları genişlet
+                            coords.forEach(coord => bounds.extend(coord));
                         }
-                    ).bindPopup(`
-                        <strong>${data.warehouse.name}</strong><br>
-                        ${data.warehouse.address}
-                    `);
-                    
-                    routeMarkers.push(depot);
-                    depot.addTo(routeMap);
-                    bounds.extend([data.warehouse.latitude, data.warehouse.longitude]);
-                }
-                
-                // Duraklar
-                if (data.stops && data.stops.length > 0) {
-                    data.stops.forEach((stop, index) => {
-                        const marker = L.marker(
-                            [stop.customer.latitude, stop.customer.longitude],
-                            {
-                                icon: L.divIcon({
-                                    className: 'customer-marker',
-                                    html: `<div style="background-color: ${getStatusColor(stop.status)}; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 2px solid white;">${index + 1}</div>`
-                                })
-                            }
-                        ).bindPopup(`
-                            <strong>${stop.customer.name}</strong><br>
-                            ${stop.customer.address}<br>
-                            <small>
-                                <strong>İletişim:</strong> ${stop.customer.contact_person}<br>
-                                <strong>Telefon:</strong> ${stop.customer.contact_phone}<br>
-                                <strong>Desi:</strong> ${stop.demand}<br>
-                                <strong>Durum:</strong> ${getStatusText(stop.status)}
-                            </small>
-                        `);
-                        
-                        routeMarkers.push(marker);
-                        marker.addTo(routeMap);
-                        bounds.extend([stop.customer.latitude, stop.customer.longitude]);
                     });
-                }
-                
-                // Haritayı sınırlara göre ayarla
-                if (routeMarkers.length > 0) {
-                    routeMap.fitBounds(bounds, { padding: [50, 50] });
-                    routeMap.invalidateSize();
-                }
-                
-                // Rota çizgilerini çiz
-                if (data.warehouse && data.stops && data.stops.length > 0) {
-                    // Tüm noktaları bir diziye ekle (depo -> duraklar -> depo)
-                    const points = [
+                } else {
+                    console.log('No route geometries found, using straight lines');
+                    // Geometri verisi yoksa düz çizgiler kullan
+                    // Depodan ilk müşteriye
+                    const firstCustomer = data.stops[0].customer;
+                    const firstLine = createRoutePolyline([
                         [data.warehouse.latitude, data.warehouse.longitude],
-                        ...data.stops.map(stop => [stop.customer.latitude, stop.customer.longitude]),
+                        [firstCustomer.latitude, firstCustomer.longitude]
+                    ]);
+                    routeLayer.addLayer(firstLine);
+
+                    // Müşteriler arası
+                    for (let i = 0; i < data.stops.length - 1; i++) {
+                        const start = data.stops[i].customer;
+                        const end = data.stops[i + 1].customer;
+                        
+                        if (!start || !end || !start.latitude || !start.longitude || !end.latitude || !end.longitude) {
+                            console.warn('Invalid coordinates for route segment:', i);
+                            continue;
+                        }
+                        
+                        const coords = [[start.latitude, start.longitude], [end.latitude, end.longitude]];
+                        const polyline = createRoutePolyline(coords);
+                        routeLayer.addLayer(polyline);
+                    }
+
+                    // Son müşteriden depoya
+                    const lastCustomer = data.stops[data.stops.length - 1].customer;
+                    const lastLine = createRoutePolyline([
+                        [lastCustomer.latitude, lastCustomer.longitude],
                         [data.warehouse.latitude, data.warehouse.longitude]
-                    ];
-                    
-                    // Tüm rotayı tek bir polyline olarak çiz
-                    const polyline = L.polyline(points, {
-                        color: '#0d6efd',
-                        weight: 3,
-                        opacity: 0.8,
-                        dashArray: '5, 10'
-                    }).addTo(routeMap);
-                    
-                    routePolylines.push(polyline);
+                    ]);
+                    routeLayer.addLayer(lastLine);
                 }
-                
-                // Rota bilgileri
-                let routeInfoHTML = `
-                    <div class="route-details">
-                        <h6>Rota Bilgileri</h6>
-                        <p>
-                `;
-                
-                if (!isDriverView) {
-                    routeInfoHTML += `<strong>Şoför:</strong> ${data.driver ? `${data.driver.user.first_name} ${data.driver.user.last_name}` : 'Atanmamış'}<br>`;
-                }
-                
-                routeInfoHTML += `
-                            <strong>Araç:</strong> ${data.vehicle ? data.vehicle.plate_number : 'Atanmamış'}<br>
-                            <strong>Toplam Mesafe:</strong> ${data.total_distance?.toFixed(1)} km<br>
-                            <strong>Toplam Desi:</strong> ${data.total_demand?.toFixed(2)}<br>
-                            <strong>Durum:</strong> ${getStatusText(data.status)}
-                        </p>
-                    </div>
-                `;
-                
-                // Sürücü görünümünde rota durumu güncelleme butonları ekle
-                if (isDriverView) {
-                    routeInfoHTML += `
-                        <div class="mt-3">
-                            <h6>Rota Durumu Güncelle</h6>
-                            <div class="btn-group">
-                                <button class="btn btn-sm status-btn btn-primary update-route-status" 
-                                        data-route-id="${routeId}" 
-                                        data-status="in_progress"
-                                        ${data.status === 'in_progress' ? 'disabled' : ''}>
-                                    <i class="bi bi-play-fill"></i> Başlat
-                                </button>
-                                <button class="btn btn-sm status-btn btn-success update-route-status" 
-                                        data-route-id="${routeId}" 
-                                        data-status="completed"
-                                        ${data.status === 'completed' ? 'disabled' : ''}>
-                                    <i class="bi bi-check-lg"></i> Tamamlandı
-                                </button>
-                                <button class="btn btn-sm status-btn btn-warning update-route-status" 
-                                        data-route-id="${routeId}" 
-                                        data-status="cancelled"
-                                        ${data.status === 'cancelled' ? 'disabled' : ''}>
-                                    <i class="bi bi-x-lg"></i> İptal Et
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                document.getElementById(infoId).innerHTML = routeInfoHTML;
-                
-                // Rota durumu güncelleme butonlarına olay dinleyicileri ekle
-                if (isDriverView) {
-                    document.querySelectorAll('.update-route-status').forEach(button => {
-                        button.addEventListener('click', function() {
-                            updateRouteStatus(
-                                this.dataset.routeId,
-                                this.dataset.status
-                            );
-                        });
+            }
+            
+            // Haritayı ayarla ve sınırlara göre yakınlaştır
+            if (bounds.isValid()) {
+                try {
+                    map.fitBounds(bounds, {
+                        padding: [50, 50],
+                        maxZoom: 15,
+                        animate: true,
+                        duration: 1
                     });
+                } catch (e) {
+                    console.error('Error fitting bounds:', e);
+                    map.setView([39.9334, 32.8597], 6);
                 }
-                
-                // Duraklar listesi (sadece sürücü görünümünde)
-                if (isDriverView && stopsId && document.getElementById(stopsId)) {
-                    // Durak listesi başlığı
-                    let stopsHTML = `<div class="mt-4"><h6>Duraklar</h6>`;
-                    
-                    // Durakları listele
-                    stopsHTML += data.stops.map((stop, index) => `
-                        <div class="route-stop mb-3 p-2">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <strong>${index + 1}. ${stop.customer.name}</strong>
-                                    <div><small>${stop.customer.address}</small></div>
-                                    <div><small>İletişim: ${stop.customer.contact_person} - ${stop.customer.contact_phone}</small></div>
-                                    ${stop.notes ? `<div class="mt-1 text-info"><small><i class="bi bi-journal-text"></i> Not: ${stop.notes}</small></div>` : ''}
-                                </div>
-                                <div class="d-flex align-items-center">
-                                    <button class="btn btn-sm btn-outline-info note-btn add-note-btn" 
-                                            data-route-id="${routeId}" 
-                                            data-stop-id="${stop.id}"
-                                            title="Not Ekle">
-                                        <i class="bi bi-journal-plus"></i>
-                                    </button>
-                                    <span class="badge status-badge bg-${getStatusBadgeColor(stop.status)}">${getStatusText(stop.status)}</span>
-                                </div>
-                            </div>
-                            <div class="mt-2">
-                                <div class="btn-group" role="group">
-                                    <button class="btn btn-sm status-btn ${stop.status === 'completed' ? 'btn-success' : 'btn-outline-success'} update-stop-status" 
-                                            data-route-id="${routeId}" 
-                                            data-stop-id="${stop.id}" 
-                                            data-status="completed"
-                                            ${stop.status === 'completed' || data.status !== 'in_progress' ? 'disabled' : ''}>
-                                        <i class="bi bi-check-lg"></i> Tamamlandı
-                                    </button>
-                                    <button class="btn btn-sm status-btn ${stop.status === 'failed' ? 'btn-danger' : 'btn-outline-danger'} update-stop-status" 
-                                            data-route-id="${routeId}" 
-                                            data-stop-id="${stop.id}" 
-                                            data-status="failed"
-                                            ${stop.status === 'failed' || data.status !== 'in_progress' ? 'disabled' : ''}>
-                                        <i class="bi bi-x-lg"></i> Başarısız
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    `).join('');
-                    
-                    stopsHTML += `</div>`;
-                    
-                    document.getElementById(stopsId).innerHTML = stopsHTML;
-                    
-                    // Durak durumu güncelleme butonlarına olay dinleyicileri ekle
-                    document.querySelectorAll('.update-stop-status').forEach(button => {
-                        button.addEventListener('click', function() {
-                            updateStopStatus(
-                                this.dataset.routeId,
-                                this.dataset.stopId,
-                                this.dataset.status
-                            );
-                        });
-                    });
-                    
-                    // Not ekleme butonlarına olay dinleyicileri ekle
-                    document.querySelectorAll('.add-note-btn').forEach(button => {
-                        button.addEventListener('click', function() {
-                            addStopNote(
-                                this.dataset.routeId,
-                                this.dataset.stopId
-                            );
-                        });
-                    });
-                }
-            })
-            .catch(error => {
-                console.error('Rota detayları alınırken hata:', error);
-                if (document.getElementById(infoId)) {
-                    document.getElementById(infoId).innerHTML = `
-                        <div class="alert alert-danger">
-                            Rota detayları yüklenirken bir hata oluştu: ${error.message}
-                        </div>
-                    `;
-                }
-                if (stopsId && document.getElementById(stopsId)) {
-                    document.getElementById(stopsId).innerHTML = '';
+            } else {
+                console.warn('Invalid bounds, using default view');
+                map.setView([39.9334, 32.8597], 6);
+            }
+
+            // Harita yüklendikten sonra zoom kontrollerini güncelle
+            map.on('load', function() {
+                if (!map.zoomControl) {
+                    L.control.zoom({
+                        position: 'topleft'
+                    }).addTo(map);
                 }
             });
+
+            // Rota bilgilerini göster
+            updateRouteInfo(data, infoId, isDriverView);
+            
+            // Modalı göster
+            modal.show();
+
+            // Modal gösterildikten sonra haritayı yeniden boyutlandır
+            modal.handleUpdate();
+            setTimeout(() => {
+                map.invalidateSize();
+                if (bounds.isValid()) {
+                    map.fitBounds(bounds, {padding: [50, 50]});
+                }
+            }, 250);
+        })
+        .catch(error => {
+            console.error('Error loading route details:', error);
+            alert('Rota detayları yüklenirken bir hata oluştu: ' + error.message);
+        });
+}
+
+function createMarker(point, label, isDepot = false) {
+    const markerColor = isDepot ? '#dc3545' : '#0d6efd';
+    const markerSize = isDepot ? 32 : 24;
+    const fontSize = isDepot ? 14 : 12;
+    
+    const markerHtml = `
+        <div style="
+            background-color: ${markerColor};
+            border: 2px solid white;
+            border-radius: 50%;
+            width: ${markerSize}px;
+            height: ${markerSize}px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: ${fontSize}px;
+        ">
+            ${label}
+        </div>
+    `;
+    
+    const marker = L.marker([point.latitude, point.longitude], {
+        icon: L.divIcon({
+            className: isDepot ? 'depot-marker' : 'customer-marker',
+            html: markerHtml
+        })
     });
     
-    // Modal kapatıldığında haritayı temizle
-    document.getElementById(modalId).addEventListener('hidden.bs.modal', function () {
-        if (routeMap) {
-            routeMap.remove();
-            routeMap = null;
-        }
-        routeMarkers = [];
-        routePolylines = [];
-    });
+    // Popup içeriği
+    const popupContent = `
+        <div class="route-stop-popup">
+            <h6>${point.name}</h6>
+            <p class="mb-2">${point.address}</p>
+            ${point.contact_person ? `
+                <div class="contact-info mb-2">
+                    <small>
+                        <i class="bi bi-person"></i> ${point.contact_person}<br>
+                        <i class="bi bi-telephone"></i> ${point.contact_phone}
+                    </small>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    marker.bindPopup(popupContent);
+    return marker;
+}
+
+function createRoutePolyline(coordinates) {
+    const options = {
+        color: '#0d6efd',
+        weight: 3,
+        opacity: 0.8
+    };
+    
+    return L.polyline(coordinates, options);
+}
+
+function getStatusBadge(status) {
+    const statusMap = {
+        'planned': ['secondary', 'Planlandı'],
+        'in_progress': ['primary', 'Devam Ediyor'],
+        'completed': ['success', 'Tamamlandı'],
+        'failed': ['danger', 'Başarısız'],
+        'cancelled': ['danger', 'İptal Edildi'],
+        'skipped': ['warning', 'Atlandı']
+    };
+    
+    const [color, text] = statusMap[status] || ['secondary', status];
+    return `<span class="badge bg-${color}">${text}</span>`;
+}
+
+function getStopActionButtons(routeId, stop) {
+    const buttons = [];
+    
+    if (stop.status === 'pending') {
+        buttons.push(`
+            <button class="btn btn-success complete-stop" 
+                    data-route="${routeId}" data-stop="${stop.id}">
+                <i class="bi bi-check-lg"></i>
+            </button>
+        `);
+        buttons.push(`
+            <button class="btn btn-danger fail-stop"
+                    data-route="${routeId}" data-stop="${stop.id}">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        `);
+    }
+    
+    buttons.push(`
+        <button class="btn btn-info note-btn" title="Not Ekle"
+                data-route="${routeId}" data-stop="${stop.id}">
+            <i class="bi bi-pencil"></i>
+        </button>
+    `);
+    
+    return buttons.join('');
 }
 
 /**
@@ -507,57 +501,167 @@ function formatDuration(minutes) {
     return `${hours}s ${mins}dk`;
 }
 
-/**
- * OSRM API kullanarak iki nokta arasındaki rota çizgisini çizer
- * Bu fonksiyon artık kullanılmıyor, daha hızlı yükleme için basit çizgiler kullanıyoruz
- * @param {Array} start - Başlangıç noktası [lat, lng]
- * @param {Array} end - Bitiş noktası [lat, lng]
- * @param {string} color - Çizgi rengi
- * @returns {Promise} - Mesafe ve süre bilgisi
- */
-async function drawRouteLine(start, end, color) {
-    try {
-        const response = await fetch(
-            `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`
-        );
-        const data = await response.json();
-        
-        if (data.code !== 'Ok' || !data.routes || !data.routes[0]) {
-            throw new Error('Rota alınamadı');
-        }
-        
-        const polyline = L.polyline(
-            data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]),
-            {
-                color: color,
-                weight: 3,
-                opacity: 0.8
-            }
-        );
-        
-        polyline.addTo(routeMap);
-        routePolylines.push(polyline);
-        
-        return {
-            distance: data.routes[0].distance / 1000,
-            duration: Math.round(data.routes[0].duration / 60)
-        };
-    } catch (error) {
-        console.error('Rota çizimi başarısız:', error);
-        // Düz çizgi ile bağla
-        const polyline = L.polyline([start, end], {
-            color: color,
-            weight: 3,
-            opacity: 0.8,
-            dashArray: '5, 10'
-        });
-        
-        polyline.addTo(routeMap);
-        routePolylines.push(polyline);
-        
-        return {
-            distance: 0,
-            duration: 0
-        };
+function updateRouteInfo(data, infoId, isDriverView) {
+    const routeInfo = document.getElementById(infoId);
+    
+    // Debug: Gelen verileri kontrol et
+    console.log('UpdateRouteInfo Data:', {
+        driver: data.driver,
+        vehicle: data.vehicle,
+        total_distance: data.total_distance,
+        total_demand: data.total_demand
+    });
+    
+    // Araç bilgisini hazırla
+    let vehicleInfo = 'Atanmamış';
+    if (data.vehicle && data.vehicle.plate_number) {
+        vehicleInfo = `${data.vehicle.brand || ''} ${data.vehicle.model || ''} - ${data.vehicle.plate_number}`.trim();
     }
-} 
+    
+    // Şoför bilgisini hazırla
+    let driverInfo = 'Atanmamış';
+    if (data.driver && data.driver.user) {
+        driverInfo = `${data.driver.user.first_name || ''} ${data.driver.user.last_name || ''}`.trim();
+    }
+    
+    // Mesafe hesaplama
+    let distance = 0;
+    if (typeof data.total_distance === 'string') {
+        distance = parseFloat(data.total_distance);
+    } else if (typeof data.total_distance === 'number') {
+        distance = data.total_distance;
+    }
+    
+    routeInfo.innerHTML = `
+        <div class="route-details">
+            <h6>Rota Bilgileri</h6>
+            <div class="row">
+                <div class="col-md-12">
+                    <p>
+                        <strong>Durum:</strong> ${getStatusBadge(data.status)}<br>
+                        <strong>Araç:</strong> ${vehicleInfo}<br>
+                        <strong>Şoför:</strong> ${driverInfo}<br>
+                        <strong>Toplam Mesafe:</strong> ${distance ? distance.toFixed(1) : '0.0'} km<br>
+                        <strong>Toplam Yük:</strong> ${data.total_demand ? data.total_demand.toFixed(2) : '0.00'} desi<br>
+                        <strong>Durak Sayısı:</strong> ${data.stops.length} müşteri
+                    </p>
+                </div>
+            </div>
+
+            ${isDriverView ? `
+                <div class="route-actions mt-3">
+                    <h6>Rota Durumu</h6>
+                    <div class="btn-group">
+                        <button class="btn btn-sm status-btn btn-primary update-route-status" 
+                                data-route-id="${data.id}" 
+                                data-status="in_progress"
+                                ${data.status === 'in_progress' ? 'disabled' : ''}>
+                            <i class="bi bi-play-fill"></i> Başlat
+                        </button>
+                        <button class="btn btn-sm status-btn btn-success update-route-status" 
+                                data-route-id="${data.id}" 
+                                data-status="completed"
+                                ${data.status === 'completed' ? 'disabled' : ''}>
+                            <i class="bi bi-check-lg"></i> Tamamlandı
+                        </button>
+                        <button class="btn btn-sm status-btn btn-warning update-route-status" 
+                                data-route-id="${data.id}" 
+                                data-status="cancelled"
+                                ${data.status === 'cancelled' ? 'disabled' : ''}>
+                            <i class="bi bi-x-lg"></i> İptal Et
+                        </button>
+                    </div>
+                </div>
+            ` : ''}
+            
+            <div class="route-stops mt-4">
+                <h6>Duraklar (${data.stops.length})</h6>
+                ${data.stops.map((stop, index) => `
+                    <div class="route-stop">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${index + 1}. ${stop.customer?.name || ''}</strong>
+                                <br>
+                                <small>${stop.customer?.address || ''}</small>
+                                ${stop.planned_arrival ? `
+                                    <br>
+                                    <small class="text-muted">
+                                        <i class="bi bi-clock"></i> 
+                                        Planlanan: ${formatDateTime(stop.planned_arrival)}
+                                    </small>
+                                ` : ''}
+                            </div>
+                            ${isDriverView ? `
+                                <div class="btn-group btn-group-sm">
+                                    ${getStopActionButtons(data.id, stop)}
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <div class="stop-details mt-2">
+                            <small>
+                                <i class="bi bi-geo-alt"></i> ${stop.customer?.address || ''}<br>
+                                <i class="bi bi-box"></i> Yük: ${(stop.demand || 0).toFixed(2)} desi
+                            </small>
+                        </div>
+
+                        ${stop.notes ? `
+                            <div class="stop-notes mt-2">
+                                <small class="text-info">
+                                    <i class="bi bi-journal-text"></i> ${stop.notes}
+                                </small>
+                            </div>
+                        ` : ''}
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+
+    // Event listener'ları ekle
+    if (isDriverView) {
+        addEventListeners(data.id);
+    }
+}
+
+function addEventListeners(routeId) {
+    // Rota durumu butonları
+    document.querySelectorAll('.update-route-status').forEach(button => {
+        button.addEventListener('click', function() {
+            updateRouteStatus(
+                this.dataset.routeId,
+                this.dataset.status
+            );
+        });
+    });
+
+    // Durak durumu butonları
+    document.querySelectorAll('.complete-stop, .fail-stop').forEach(button => {
+        button.addEventListener('click', function() {
+            const status = this.classList.contains('complete-stop') ? 'completed' : 'failed';
+            updateStopStatus(
+                this.dataset.route,
+                this.dataset.stop,
+                status
+            );
+        });
+    });
+
+    // Not ekleme butonları
+    document.querySelectorAll('.note-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            addStopNote(
+                this.dataset.route,
+                this.dataset.stop
+            );
+        });
+    });
+}
+
+// Modal kapatıldığında haritayı temizle
+document.addEventListener('hidden.bs.modal', function(event) {
+    if (window.currentRouteMap) {
+        window.currentRouteMap.remove();
+        window.currentRouteMap = null;
+    }
+}); 

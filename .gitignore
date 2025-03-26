@@ -7,3 +7,6 @@ cache/
 *.graphml
 
 BitirmeRaporu.tex
+static/complete_algorithm_flow.md
+static/detailed_algorithm_flow.md
+static/elevation_flow.md

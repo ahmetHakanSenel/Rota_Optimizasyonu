@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify, render_template, redirect, url_for, flash, session, abort
 from flask_cors import CORS
-from alg_creator import run_tabu_search
-from process_data import ProblemInstance
+from alg_creator import run_tabu_search, split_into_routes
 from database import SessionLocal
 from models import User, Company, CompanyEmployee, Vehicle, Driver, Customer, Warehouse, UserRole, Route, RouteStatus, RouteDetail, VehicleStatus
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -10,8 +9,9 @@ from functools import wraps
 from sqlalchemy import func
 import time
 import random
-from utils.osrm_handler import OSRMHandler
+from process_data import OSRMHandler
 import traceback
+from sqlalchemy.orm import joinedload
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.urandom(24)  # Session için gerekli
@@ -158,7 +158,7 @@ def optimize_route():
         else:
             # Yeterli müşteri var mı kontrol et
             if len(customers) < num_customers:
-                return jsonify({'error': f'Not enough customers. Company has {len(customers)} customers, but instance only has {len(customers)} customers.'}), 400
+                return jsonify({'error': f'Not enough customers. Company has {len(customers)} customers, but requested {num_customers} customers.'}), 400
             
             # Rastgele müşteri seç
             selected_customers = random.sample(customers, num_customers)
@@ -173,7 +173,9 @@ def optimize_route():
                     'x': warehouse.latitude,
                     'y': warehouse.longitude
                 },
-                'demand': 0
+                'demand': 0,
+                'name': warehouse.name,
+                'address': warehouse.address
             }
         }
         
@@ -184,7 +186,11 @@ def optimize_route():
                     'x': customer.latitude,
                     'y': customer.longitude
                 },
-                'demand': customer.desi
+                'demand': customer.desi,
+                'name': customer.name,
+                'address': customer.address,
+                'contact_person': customer.contact_person,
+                'contact_phone': customer.contact_phone
             }
         
         # OSRM ile mesafe matrisini hesapla
@@ -194,38 +200,28 @@ def optimize_route():
         
         print("\nStarting Tabu Search optimization...")
         # Tabu Search algoritmasını çalıştır
-        problem_instance = ProblemInstance(direct_data=instance_data)
-        result = run_tabu_search(
-            instance_data=instance_data,  # Doğrudan veriyi gönder
-            individual_size=num_customers,
-            n_gen=1200,
-            tabu_size=45,
+        best_solution, best_fitness, stats = run_tabu_search(
+            instance_data=instance_data,
+            maps_handler=map_handler,
+            max_iterations=1200,
             stagnation_limit=50,
-            vehicle_capacity=vehicle_capacity,
-            verbose=True  # Debug bilgisi için verbose'u açıyoruz
+            verbose=True
         )
         
-        if not result:
+        if not best_solution:
             print("No solution found from Tabu Search")
             return jsonify({'error': 'No feasible solution found. Try reducing the number of customers or increasing vehicle capacity.'}), 404
         
-        print(f"\nFound solution with {len(result)} routes")
+        # Çözümü rotalara böl
+        routes = split_into_routes(best_solution, instance_data)
+        
+        print(f"\nFound solution with {len(routes)} routes")
         
         # Her alt rota için bir Route kaydı oluştur
         routes_response = []
-        for sub_route_index, sub_route in enumerate(result):
+        for sub_route_index, sub_route in enumerate(routes):
             print(f"\nProcessing route {sub_route_index + 1}: {sub_route}")
-            route = Route(
-                company_id=company_id,
-                warehouse_id=warehouse.id,
-                status=RouteStatus.PLANNED,
-                total_distance=0,
-                total_duration=0,
-                total_demand=0,
-                created_at=func.now(),
-                updated_at=func.now()
-            )
-
+            
             # Müsait araç ve şoför bul
             available_driver = db.query(Driver).filter(
                 Driver.company_id == company_id,
@@ -236,90 +232,87 @@ def optimize_route():
                 )
             ).first()
 
-            if available_driver:
-                route.driver_id = available_driver.id
-                print(f"Using driver: {available_driver.user.first_name} {available_driver.user.last_name}")
-
-                # Önce şoförün atanmış aracını kontrol et
-                if available_driver.vehicle:
-                    # Şoförün atanmış aracı müsait mi kontrol et
-                    vehicle_in_use = db.query(Route).filter(
-                        Route.vehicle_id == available_driver.vehicle.id,
-                        Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS])
-                    ).first()
-
-                    if not vehicle_in_use:
-                        route.vehicle_id = available_driver.vehicle.id
-                        print(f"Using driver's assigned vehicle: {available_driver.vehicle.plate_number}")
-                    else:
-                        # Şoförün aracı müsait değilse, başka müsait araç bul
-                        available_vehicle = db.query(Vehicle).filter(
-                            Vehicle.company_id == company_id,
-                            Vehicle.status == VehicleStatus.ACTIVE,
-                            ~Vehicle.id.in_(
-                                db.query(Route.vehicle_id).filter(
-                                    Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS])
-                                )
-                            )
-                        ).order_by(Vehicle.capacity.desc()).first()
-
-                        if available_vehicle:
-                            route.vehicle_id = available_vehicle.id
-                            print(f"Using available vehicle: {available_vehicle.plate_number}")
-                            # Şoförü bu araca ata
-                            available_vehicle.driver_id = available_driver.id
-                        else:
-                            print("No available vehicle found for this route.")
-                            return jsonify({'error': 'No available vehicle for the route.'}), 400
-                else:
-                    # Şoförün atanmış aracı yoksa, müsait araç bul
-                    available_vehicle = db.query(Vehicle).filter(
-                        Vehicle.company_id == company_id,
-                        Vehicle.status == VehicleStatus.ACTIVE,
-                        ~Vehicle.id.in_(
-                            db.query(Route.vehicle_id).filter(
-                                Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS])
-                            )
-                        )
-                    ).order_by(Vehicle.capacity.desc()).first()
-
-                    if available_vehicle:
-                        route.vehicle_id = available_vehicle.id
-                        print(f"Using available vehicle: {available_vehicle.plate_number}")
-                        # Şoförü bu araca ata
-                        available_vehicle.driver_id = available_driver.id
-                    else:
-                        print("No available vehicle found for this route.")
-                        return jsonify({'error': 'No available vehicle for the route.'}), 400
-            else:
+            if not available_driver:
                 print("No available driver found for this route.")
                 return jsonify({'error': 'No available driver for the route.'}), 400
+
+            # Önce şoförün atanmış aracını kontrol et
+            available_vehicle = None
+            if available_driver.vehicle:
+                # Şoförün atanmış aracı müsait mi kontrol et
+                vehicle_in_use = db.query(Route).filter(
+                    Route.vehicle_id == available_driver.vehicle.id,
+                    Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS])
+                ).first()
+
+                if not vehicle_in_use:
+                    available_vehicle = available_driver.vehicle
+                    print(f"Using driver's assigned vehicle: {available_vehicle.plate_number}")
+
+            # Eğer şoförün aracı müsait değilse veya atanmış aracı yoksa, başka müsait araç bul
+            if not available_vehicle:
+                available_vehicle = db.query(Vehicle).filter(
+                    Vehicle.company_id == company_id,
+                    Vehicle.status == VehicleStatus.ACTIVE,
+                    ~Vehicle.id.in_(
+                        db.query(Route.vehicle_id).filter(
+                            Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS])
+                        )
+                    )
+                ).order_by(Vehicle.capacity.desc()).first()
+
+                if not available_vehicle:
+                    print("No available vehicle found for this route.")
+                    return jsonify({'error': 'No available vehicle for the route.'}), 400
+
+                # Şoförü bu araca ata
+                available_vehicle.driver_id = available_driver.id
+
+            # Toplam mesafe hesapla
+            total_distance = 0
+            prev_point = (warehouse.latitude, warehouse.longitude)
             
-            # Veritabanına kaydetmeden önce debug bilgisi yazdır
+            # Müşteriler arası mesafeleri hesapla
+            for customer_id in sub_route:
+                customer = selected_customers[customer_id - 1]
+                curr_point = (customer.latitude, customer.longitude)
+                total_distance += map_handler.get_distance(prev_point, curr_point)
+                prev_point = curr_point
+            
+            # Son noktadan depoya dönüş mesafesini ekle
+            total_distance += map_handler.get_distance(prev_point, (warehouse.latitude, warehouse.longitude))
+
+            # Yeni rotayı oluştur
+            route = Route(
+                company_id=company_id,
+                warehouse_id=warehouse.id,
+                vehicle_id=available_vehicle.id,
+                driver_id=available_driver.id,
+                status=RouteStatus.PLANNED,
+                total_distance=total_distance,
+                total_duration=int(total_distance * 2),  # Yaklaşık süre: 30 km/saat
+                total_demand=0,  # Toplam talep aşağıda hesaplanacak
+                created_at=func.now(),
+                updated_at=func.now()
+            )
+
             print(f"Attempting to save route to database: {route.__dict__}")
             db.add(route)
-            db.flush()  # Veritabanına eklemeden önce nesneyi güncelle
-            
+            db.flush()
+
             # Route Details ekle
             route_points = []
-            total_distance = 0
             total_demand = 0
-            prev_point = None
-            
+
             # Depo başlangıç noktası
             route_points.append({
                 'lat': warehouse.latitude,
                 'lng': warehouse.longitude,
                 'name': warehouse.name,
-                'demand': 0,
+                'address': warehouse.address,
                 'type': 'depot'
             })
-            
-            prev_point = {
-                'lat': warehouse.latitude,
-                'lng': warehouse.longitude
-            }
-            
+
             # Müşteri noktaları
             for i, customer_id in enumerate(sub_route, 1):
                 customer = selected_customers[customer_id - 1]
@@ -333,77 +326,53 @@ def optimize_route():
                     updated_at=func.now()
                 )
                 db.add(route_detail)
-                
+
                 route_points.append({
                     'lat': customer.latitude,
                     'lng': customer.longitude,
                     'name': customer.name,
+                    'address': customer.address,
+                    'contact_person': customer.contact_person,
+                    'contact_phone': customer.contact_phone,
                     'demand': float(customer.desi),
                     'type': 'customer'
                 })
-                
+
                 total_demand += customer.desi
-                
-                if prev_point:
-                    leg_distance = map_handler.get_distance(
-                        (prev_point['lat'], prev_point['lng']),
-                        (customer.latitude, customer.longitude)
-                    )
-                    total_distance += leg_distance
-                
-                prev_point = {
-                    'lat': customer.latitude,
-                    'lng': customer.longitude
-                }
-            
+
             # Depoya dönüş
-            if prev_point:
-                leg_distance = map_handler.get_distance(
-                    (prev_point['lat'], prev_point['lng']),
-                    (warehouse.latitude, warehouse.longitude)
-                )
-                total_distance += leg_distance
-            
             route_points.append({
                 'lat': warehouse.latitude,
                 'lng': warehouse.longitude,
                 'name': warehouse.name,
-                'demand': 0,
+                'address': warehouse.address,
                 'type': 'depot'
             })
-            
+
             # Route bilgilerini güncelle
-            route.total_distance = total_distance
             route.total_demand = total_demand
-            route.total_duration = int(total_distance * 2)  # Yaklaşık süre (dakika)
-            
-            # Debug bilgisi ekle
-            print(f"Route {sub_route_index + 1} - Distance: {total_distance:.2f} km, Demand: {total_demand:.2f}")
-            
+
             routes_response.append({
                 'points': route_points,
                 'total_distance': float(total_distance),
                 'total_demand': float(total_demand),
-                'total_duration': int(total_distance * 2),
-                'vehicle': available_vehicle.plate_number if available_vehicle else None,
-                'driver': f"{available_driver.user.first_name} {available_driver.user.last_name}" if available_driver else None
+                'total_duration': route.total_duration,
+                'vehicle': available_vehicle.plate_number,
+                'driver': f"{available_driver.user.first_name} {available_driver.user.last_name}"
             })
-            
-            print(f"Route response structure: {routes_response[-1]}")
-            print(f"Full routes_response array: {routes_response}")
-        
+
         db.commit()
-        
         return jsonify({
             'success': True,
             'message': f'{len(routes_response)} rota başarıyla oluşturuldu.',
             'routes': routes_response,
             'vehicle_capacity': vehicle_capacity
         })
+
     except Exception as e:
         db.rollback()
         print(f"Error: {str(e)}")
-        traceback.print_exc()  # Hata stack trace'ini yazdır
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
     finally:
         db.close()
@@ -886,7 +855,14 @@ def driver_dashboard():
 def get_route_details(route_id):
     db = SessionLocal()
     try:
-        route = db.query(Route).get(route_id)
+        # Rota bilgilerini ilişkili tablolarla birlikte çek
+        route = db.query(Route).options(
+            joinedload(Route.driver).joinedload(Driver.user),
+            joinedload(Route.vehicle),
+            joinedload(Route.warehouse),
+            joinedload(Route.route_details).joinedload(RouteDetail.customer)
+        ).get(route_id)
+        
         if not route:
             return jsonify({'error': 'Rota bulunamadı'}), 404
             
@@ -906,15 +882,21 @@ def get_route_details(route_id):
             'status': route.status.value,
             'start_time': route.start_time.isoformat() if route.start_time else None,
             'end_time': route.end_time.isoformat() if route.end_time else None,
-            'total_distance': route.total_distance,
+            'total_distance': float(route.total_distance) if route.total_distance else 0,
             'total_duration': route.total_duration,
-            'total_demand': route.total_demand,
+            'total_demand': float(route.total_demand) if route.total_demand else 0,
             'vehicle': {
                 'plate_number': route.vehicle.plate_number,
                 'brand': route.vehicle.brand,
                 'model': route.vehicle.model,
                 'capacity': route.vehicle.capacity
             } if route.vehicle else None,
+            'driver': {
+                'user': {
+                    'first_name': route.driver.user.first_name,
+                    'last_name': route.driver.user.last_name
+                }
+            } if route.driver and route.driver.user else None,
             'warehouse': {
                 'name': route.warehouse.name,
                 'address': route.warehouse.address,
@@ -924,10 +906,19 @@ def get_route_details(route_id):
             'stops': []
         }
         
+        # Debug: Şoför bilgilerini kontrol et
+        print("\nRoute Driver Info:")
+        if route.driver and route.driver.user:
+            print(f"Driver ID: {route.driver.id}")
+            print(f"Driver User ID: {route.driver.user_id}")
+            print(f"Driver Name: {route.driver.user.first_name} {route.driver.user.last_name}")
+        else:
+            print("No driver assigned")
+        
         # Durakları ekle
         for detail in route.route_details:
             route_data['stops'].append({
-                'id': detail.id,  # Stop ID'sini ekle
+                'id': detail.id,
                 'sequence': detail.sequence_number,
                 'customer': {
                     'name': detail.customer.name,
@@ -937,7 +928,7 @@ def get_route_details(route_id):
                     'contact_person': detail.customer.contact_person,
                     'contact_phone': detail.customer.contact_phone
                 },
-                'demand': detail.demand,
+                'demand': float(detail.demand) if detail.demand else 0,
                 'status': detail.status,
                 'planned_arrival': detail.planned_arrival_time.isoformat() if detail.planned_arrival_time else None,
                 'actual_arrival': detail.actual_arrival_time.isoformat() if detail.actual_arrival_time else None,
@@ -1405,4 +1396,4 @@ def add_stop_note(route_id, stop_id):
         db.close()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True) 
+    app.run(host='0.0.0.0', port=5000, debug=True)

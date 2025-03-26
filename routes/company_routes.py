@@ -6,6 +6,7 @@ from datetime import datetime
 from sqlalchemy import and_
 from utils.route_optimizer import optimize_routes
 from utils.auth import company_required
+from process_data import OSRMHandler
 
 company_routes = Blueprint('company_routes', __name__)
 
@@ -110,6 +111,60 @@ def get_route(route_id):
         
         if not route:
             return jsonify({'success': False, 'error': 'Route not found'}), 404
+        
+        # OSRM handler'ı başlat
+        osrm_handler = OSRMHandler()
+        
+        # Rota geometrilerini hazırla
+        route_geometries = []
+        
+        # Depo koordinatları
+        warehouse_coords = (route.warehouse.latitude, route.warehouse.longitude)
+        
+        # Durakları sıraya göre al
+        stops = sorted(route.route_details, key=lambda x: x.sequence)
+        
+        if stops:
+            # Depodan ilk müşteriye
+            first_stop = stops[0]
+            first_coords = (first_stop.customer.latitude, first_stop.customer.longitude)
+            
+            # Rota detaylarını al
+            first_segment = osrm_handler.get_route_details(warehouse_coords, first_coords)
+            if first_segment:
+                route_geometries.append({
+                    'from': 'warehouse',
+                    'to': f'customer_{first_stop.customer.id}',
+                    'coordinates': first_segment.get('coordinates', [])
+                })
+            
+            # Müşteriler arası
+            for i in range(len(stops) - 1):
+                start_stop = stops[i]
+                end_stop = stops[i + 1]
+                
+                start_coords = (start_stop.customer.latitude, start_stop.customer.longitude)
+                end_coords = (end_stop.customer.latitude, end_stop.customer.longitude)
+                
+                segment = osrm_handler.get_route_details(start_coords, end_coords)
+                if segment:
+                    route_geometries.append({
+                        'from': f'customer_{start_stop.customer.id}',
+                        'to': f'customer_{end_stop.customer.id}',
+                        'coordinates': segment.get('coordinates', [])
+                    })
+            
+            # Son müşteriden depoya
+            last_stop = stops[-1]
+            last_coords = (last_stop.customer.latitude, last_stop.customer.longitude)
+            
+            last_segment = osrm_handler.get_route_details(last_coords, warehouse_coords)
+            if last_segment:
+                route_geometries.append({
+                    'from': f'customer_{last_stop.customer.id}',
+                    'to': 'warehouse',
+                    'coordinates': last_segment.get('coordinates', [])
+                })
             
         route_data = {
             'id': route.id,
@@ -137,6 +192,7 @@ def get_route(route_id):
             'status': route.status,
             'created_at': route.created_at.isoformat(),
             'stops': [{
+                'id': detail.id,
                 'sequence': detail.sequence,
                 'demand': detail.demand,
                 'status': detail.status,
@@ -149,12 +205,14 @@ def get_route(route_id):
                     'latitude': detail.customer.latitude,
                     'longitude': detail.customer.longitude
                 }
-            } for detail in route.route_details]
+            } for detail in route.route_details],
+            'route_geometries': route_geometries
         }
         
-        return jsonify({'success': True, 'data': route_data})
+        return jsonify(route_data)
         
     except Exception as e:
+        print(f"Error getting route details: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @company_routes.route('/api/route/<int:route_id>', methods=['DELETE'])
