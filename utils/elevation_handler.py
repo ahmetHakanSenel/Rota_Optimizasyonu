@@ -39,7 +39,7 @@ class ElevationHandler:
     
     def get_elevation(self, lat: float, lon: float) -> float:
         """Belirli bir koordinat için yükseklik bilgisini al"""
-        cache_key = (round(lat, 6), round(lon, 6))  # 6 decimal precision
+        cache_key = (round(lat, 6), round(lon, 6)) 
         if cache_key in self.elevation_cache:
             return self.elevation_cache[cache_key]
         

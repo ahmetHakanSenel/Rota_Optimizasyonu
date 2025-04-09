@@ -134,25 +134,47 @@ function showRouteDetails(routeId, modalId, mapId, infoId, stopsId, isDriverView
             if (data.warehouse && data.stops.length > 0) {
                 // Eğer route_geometries varsa, bunları kullan
                 if (data.route_geometries && data.route_geometries.length > 0) {
-                    console.log('Using route geometries from API:', data.route_geometries);
-                    // Her segment için geometri verilerini kullan
+                    console.log(`Using ${data.route_geometries.length} route geometries from API`); // Log geometry count
+                    
                     data.route_geometries.forEach(segment => {
-                        if (segment.coordinates && segment.coordinates.length > 0) {
-                            // OSRM'den gelen koordinatları Leaflet formatına dönüştür
-                            const coords = segment.coordinates.map(coord => [coord[1], coord[0]]);
-                            const polyline = L.polyline(coords, {
-                                color: '#0d6efd',
-                                weight: 3,
-                                opacity: 0.8
-                            });
-                            routeLayer.addLayer(polyline);
-                            
-                            // Sınırları genişlet
-                            coords.forEach(coord => bounds.extend(coord));
+                        // Koordinatların geçerli olup olmadığını kontrol et
+                        if (segment.coordinates && Array.isArray(segment.coordinates) && segment.coordinates.length >= 2) {
+                            try {
+                                // OSRM'den gelen koordinatları [lat, lon] formatına dönüştür
+                                // OSRM genellikle [lon, lat] döndürür, Leaflet [lat, lon] bekler
+                                const coords = segment.coordinates.map(coord => {
+                                    // Koordinatın bir dizi ve 2 elemanlı olduğundan emin ol
+                                    if (Array.isArray(coord) && coord.length >= 2) {
+                                        return [coord[1], coord[0]]; // Ters çevir: lon, lat -> lat, lon
+                                    } else {
+                                        console.warn('Invalid coordinate format in segment:', coord);
+                                        return null; // Geçersiz koordinatı atla
+                                    }
+                                }).filter(coord => coord !== null); // Null değerleri filtrele
+                                
+                                // Eğer geçerli koordinat kaldıysa polyline çiz
+                                if (coords.length >= 2) {
+                                    const polyline = L.polyline(coords, {
+                                        color: '#0d6efd',
+                                        weight: 3,
+                                        opacity: 0.8
+                                    });
+                                    routeLayer.addLayer(polyline);
+                                    
+                                    // Sınırları genişlet
+                                    coords.forEach(coord => bounds.extend(coord));
+                                } else {
+                                    console.warn('Not enough valid coordinates to draw polyline for segment:', segment);
+                                }
+                            } catch (error) {
+                                console.error('Error processing segment coordinates:', segment, error);
+                            }
+                        } else {
+                            console.warn('Invalid or empty coordinates found for segment:', segment);
                         }
                     });
                 } else {
-                    console.log('No route geometries found, using straight lines');
+                    console.log('No route geometries found in API response, using straight lines');
                     // Geometri verisi yoksa düz çizgiler kullan
                     // Depodan ilk müşteriye
                     const firstCustomer = data.stops[0].customer;

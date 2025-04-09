@@ -18,6 +18,8 @@ class OSRMHandler:
         """
         self.base_url = base_url.rstrip('/')
         self.distance_matrix = {}
+        self.elevation_cache = {}
+        self.route_cost_cache = {}  # Yeni: rota maliyet önbelleği
         self.timeout = 60
         self.max_retries = 3
         self.elevation_handler = ElevationHandler()
@@ -25,30 +27,62 @@ class OSRMHandler:
         self._initialize_cache()
     
     def _initialize_cache(self):
-        """Initialize the distance matrix cache from disk if it exists."""
+        """Initialize all caches from disk"""
         cache_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cache')
         os.makedirs(cache_dir, exist_ok=True)
-        cache_file = os.path.join(cache_dir, 'osrm_distance_matrix.pkl')
         
-        if os.path.exists(cache_file):
+        # Mesafe matrisi önbelleği
+        distance_cache_file = os.path.join(cache_dir, 'osrm_distance_matrix.pkl')
+        if os.path.exists(distance_cache_file):
             try:
-                with open(cache_file, 'rb') as f:
+                with open(distance_cache_file, 'rb') as f:
                     self.distance_matrix = pickle.load(f)
                 print("Loaded distance matrix from cache")
             except Exception as e:
-                print(f"Error loading cache: {e}")
+                print(f"Error loading distance cache: {e}")
                 self.distance_matrix = {}
+        
+        # Yükseklik önbelleği
+        elevation_cache_file = os.path.join(cache_dir, 'elevation_cache.pkl')
+        if os.path.exists(elevation_cache_file):
+            try:
+                with open(elevation_cache_file, 'rb') as f:
+                    self.elevation_cache = pickle.load(f)
+                print("Loaded elevation cache")
+            except Exception as e:
+                print(f"Error loading elevation cache: {e}")
+                self.elevation_cache = {}
+        
+        # Rota maliyet önbelleği
+        cost_cache_file = os.path.join(cache_dir, 'route_cost_cache.pkl')
+        if os.path.exists(cost_cache_file):
+            try:
+                with open(cost_cache_file, 'rb') as f:
+                    self.route_cost_cache = pickle.load(f)
+                print("Loaded route cost cache")
+            except Exception as e:
+                print(f"Error loading route cost cache: {e}")
+                self.route_cost_cache = {}
     
     def save_cache(self):
-        """Save the current distance matrix cache to disk."""
+        """Save all caches to disk"""
         cache_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cache')
-        cache_file = os.path.join(cache_dir, 'osrm_distance_matrix.pkl')
         try:
-            with open(cache_file, 'wb') as f:
+            # Mesafe matrisi önbelleği
+            with open(os.path.join(cache_dir, 'osrm_distance_matrix.pkl'), 'wb') as f:
                 pickle.dump(self.distance_matrix, f)
-            print("Saved distance matrix to cache")
+            
+            # Yükseklik önbelleği
+            with open(os.path.join(cache_dir, 'elevation_cache.pkl'), 'wb') as f:
+                pickle.dump(self.elevation_cache, f)
+            
+            # Rota maliyet önbelleği
+            with open(os.path.join(cache_dir, 'route_cost_cache.pkl'), 'wb') as f:
+                pickle.dump(self.route_cost_cache, f)
+            
+            print("Saved all caches")
         except Exception as e:
-            print(f"Error saving cache: {e}")
+            print(f"Error saving caches: {e}")
     
     def get_route_details(self, origin: Tuple[float, float], dest: Tuple[float, float]) -> Dict:
         """İki nokta arasındaki rota detaylarını al"""
@@ -402,4 +436,82 @@ class OSRMHandler:
         
         print(f"Completed with {success_count}/{total_pairs} successful distance calculations")
         self.save_cache()
-        return success_count > 0 
+        return success_count > 0
+    
+    def get_route_cost(self, origin, dest, vehicle_mass=10000):
+        """
+        İki nokta arasındaki toplam rota maliyetini hesaplar.
+        Önbellekleme ile optimize edilmiş.
+        """
+        # Önbellek anahtarı oluştur
+        cache_key = (tuple(origin), tuple(dest), vehicle_mass)
+        
+        # Önbellekte varsa kullan
+        if cache_key in self.route_cost_cache:
+            return self.route_cost_cache[cache_key]
+        
+        # Mesafe bazlı maliyet
+        distance = self.get_distance(origin, dest)
+        if distance == float('inf'):
+            return float('inf')
+        
+        # Basit yükseklik tahmini (ilk aşama için)
+        if vehicle_mass <= 10000:  # Boş veya az yüklü araç
+            elevation_factor = 1.0
+        else:  # Yüklü araç
+            elevation_factor = 1.2
+        
+        # Toplam maliyeti hesapla ve önbelleğe al
+        total_cost = distance * elevation_factor
+        self.route_cost_cache[cache_key] = total_cost
+        
+        return total_cost
+    
+    def get_detailed_route_cost(self, origin, dest, vehicle_mass=10000):
+        """
+        İki nokta arasındaki detaylı rota maliyetini hesaplar.
+        Tam yükseklik analizi içerir.
+        
+        Args:
+            origin: Başlangıç noktası (lat, lon)
+            dest: Varış noktası (lat, lon)
+            vehicle_mass: Araç kütlesi (kg)
+            
+        Returns:
+            float: Toplam rota maliyeti
+        """
+        # Önbellek anahtarı
+        cache_key = (tuple(origin), tuple(dest), vehicle_mass)
+        
+        # Önbellekte varsa kullan
+        if cache_key in self.route_cost_cache:
+            return self.route_cost_cache[cache_key]
+        
+        # Mesafe bazlı maliyet
+        distance = self.get_distance(origin, dest)
+        if distance == float('inf'):
+            return float('inf')
+        
+        # Yükseklik profili al
+        elevation_profile = self.get_elevation_profile(origin, dest)
+        if not elevation_profile:
+            return distance * 1.2  # Varsayılan faktör
+        
+        # Yükseklik bazlı ek maliyet hesapla
+        total_ascent = elevation_profile['total_ascent']
+        total_descent = elevation_profile['total_descent']
+        
+        # Araç ağırlığına göre faktör
+        mass_factor = max(1.0, vehicle_mass / 10000)
+        
+        # Yokuş yukarı ve aşağı faktörleri
+        ascent_cost = total_ascent * 0.1 * mass_factor  # Yokuş yukarı daha maliyetli
+        descent_benefit = total_descent * 0.05  # Yokuş aşağı avantaj
+        
+        # Toplam maliyet
+        total_cost = distance + ascent_cost - descent_benefit
+        
+        # Önbelleğe kaydet
+        self.route_cost_cache[cache_key] = total_cost
+        
+        return total_cost 

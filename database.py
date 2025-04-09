@@ -8,9 +8,8 @@ import urllib.parse
 # .env dosyasını yükle
 load_dotenv()
 
-# Veritabanı bağlantı bilgileri - pgAdmin'den alınan bilgiler
 DB_USER = "postgres"
-DB_PASSWORD = "postgres123"  # Şifreyi postgres123 olarak güncelliyoruz
+DB_PASSWORD = "postgres123"
 DB_HOST = "localhost"
 DB_PORT = "5432"
 DB_NAME = "route_optimization"

@@ -152,6 +152,18 @@ class OSRMHandler:
             return None
 
     def calculate_energy_cost(self, route_segment, vehicle_mass=10000):
+        """
+        İki nokta arasındaki toplam enerji maliyetini, literatüre dayalı eğim ve yük etkilerini kullanarak hesaplar.
+        
+        Args:
+            route_segment: [origin, dest] şeklinde koordinatlar listesi
+            vehicle_mass: Araç kütlesi (kg) (yük dahil)
+            
+        Returns:
+            Toplam enerji maliyeti
+        """
+        import math
+        
         start_point = route_segment[0]
         end_point = route_segment[1]
         
@@ -164,7 +176,7 @@ class OSRMHandler:
         cache_key = (f"energy_{tuple(start_point)}_{tuple(end_point)}_{vehicle_mass}")
         if hasattr(self, 'energy_cache') and cache_key in self.energy_cache:
             return self.energy_cache[cache_key]
-            
+        
         # Enerji önbelleği yoksa oluştur
         if not hasattr(self, 'energy_cache'):
             self.energy_cache = {}
@@ -174,82 +186,82 @@ class OSRMHandler:
         if not elevation_profile:
             return distance * 0.15  # Yükseklik verisi yoksa basit bir yaklaşım kullan
         
-        # Temel değerler
-        route_distance = elevation_profile["total_distance"] / 1000  # km 
+        # Yükseklik değişimi
+        start_elevation = elevation_profile['elevations'][0]
+        end_elevation = elevation_profile['elevations'][-1]
+        elevation_diff = end_elevation - start_elevation  # metre cinsinden
         
-        # Araç tipi ve ağırlığına göre temel yakıt tüketimi (litre/100km)
-        if vehicle_mass <= 3500:  # Hafif ticari araç
-            base_consumption_per_100km = 8.0
-        elif vehicle_mass <= 7500:  # Orta ağırlıkta tivari
-            base_consumption_per_100km = 15.0
-        elif vehicle_mass <= 16000:  # Ağır ticari
-            base_consumption_per_100km = 25.0
-        else:  
-            base_consumption_per_100km = 35.0
+        # Eğim hesabı (yüzde olarak)
+        segment_distance = distance * 1000  # metre cinsinden
+        gradient_percent = (elevation_diff / segment_distance) * 100
         
-        base_consumption = base_consumption_per_100km / 100
-        base_fuel = route_distance * base_consumption
+        # Yük hesaplaması - 1000 kg = 100 desi kabul edelim
+        # vehicle_mass genellikle temel araç ağırlığı + yük olarak gelir
+        # Temel araç ağırlığını (örn. 10000 kg) çıkarıp sadece yük kısmını alalım
+        base_vehicle_mass = 10000  # temel araç ağırlığı (kg)
+        payload = max(0, vehicle_mass - base_vehicle_mass)  # kg cinsinden yük
+        route_load = payload / 10  # desiye çevir (yaklaşık olarak)
         
-        # Yükseklik verisi varsa ve yeterli sayıda nokta içeriyorsa
-        if 'elevations' in elevation_profile and len(elevation_profile['elevations']) > 1:
-            elevations = elevation_profile['elevations']
-            total_segment_fuel = 0
+        # 1. Yük Faktörü - Hafif üssel artış
+        load_factor = 1.0 + 0.4 * (route_load / 500) ** 1.15
+        
+        # 2. Eğim Faktörü - Literatüre dayalı
+        if gradient_percent > 0:  # Yokuş yukarı
+            # Literatüre dayalı üstel artış modeli
+            base_gradient_effect = 0.15  # %1 eğim başına yaklaşık %15 artış
+            exp_factor = 1.2  # Üstel artışı kontrol eder
             
-            # Toplam mesafeyi segment sayısına bölerek yaklaşık segment mesafelerini hesapla
-            num_segments = len(elevations) - 1
-            if num_segments > 0:
-                segment_distance = route_distance / num_segments
+            # Yük etkisi - literatüre göre yük arttıkça eğimin etkisi de artar
+            yuk_etkisi = 1.0 + (route_load / 500) * 0.2
+            
+            # Üstel artış formülü
+            gradient_etkisi = (gradient_percent ** exp_factor) * base_gradient_effect * yuk_etkisi
+            
+            # Eğim faktörü, artışı temsil eder
+            gradient_factor = 1.0 + gradient_etkisi
+            
+            # Gerçekçi bir üst sınır koyalım
+            gradient_factor = min(gradient_factor, 5.0)
+            
+        else:  # Yokuş aşağı
+            # Literatüre dayalı optimum eğim değeri
+            optimum_egim = 4.0 if route_load <= 1000 else 3.5
+            max_kazanc_orani = 0.28 if route_load <= 1000 else 0.22
+            
+            abs_gradient = abs(gradient_percent)
+            
+            # Yükün kazancı azaltıcı etkisi - literatüre göre
+            yuk_tasarruf_azalma = (route_load / 500) * 0.03
+            yuk_etkisi = max(0.6, 1.0 - yuk_tasarruf_azalma)
+            
+            # Literatürden alınan eğriye göre kazanç
+            if abs_gradient <= optimum_egim:
+                # 0'dan optimum eğime kadar yaklaşık doğrusal artış
+                kazanc_orani = (abs_gradient / optimum_egim) * max_kazanc_orani
+            else:
+                # Optimum eğimden sonra azalan kazanç
+                max_egim = 12.0
+                min_kazanc = 0.04  # Minimum %4 kazanç
                 
-                # Optimizasyon: Çok fazla segment varsa örnekleme yap
-                if num_segments > 10:
-                    sample_indices = np.linspace(0, len(elevations)-1, 10, dtype=int)
-                    elevations = [elevations[i] for i in sample_indices]
-                    num_segments = len(elevations) - 1
-                    segment_distance = route_distance / num_segments
-                
-                # Her segment için yakıt tüketimini hesapla
-                for i in range(len(elevations) - 1):
-                    segment_elevation_diff = elevations[i+1] - elevations[i]
-                    
-                    # Segment eğimini hesapla (m/km)
-                    segment_gradient = abs(segment_elevation_diff) / segment_distance if segment_distance > 0 else 0
-                    
-                    # Segment için temel yakıt tüketimi
-                    segment_base_fuel = segment_distance * base_consumption
-                    
-                    # Yokuş yukarı ek tüketim
-                    if segment_elevation_diff > 0:  # Yokuş yukarı
-                        # Eğim kategorilerini basitleştir
-                        if segment_gradient <= 50:  # Hafif/orta yokuş
-                            ascent_factor = 0.1 * (segment_gradient / 25)
-                        else:  # Dik yokuş
-                            ascent_factor = 0.2 + 0.1 * min(1, (segment_gradient - 50) / 50)
-                        
-                        # Ağırlık etkisi - basitleştirilmiş
-                        weight_multiplier = max(1.0, vehicle_mass / 7500)
-                        segment_fuel = segment_base_fuel * (1 + ascent_factor * weight_multiplier)
-                    
-                    # Yokuş aşağı yakıt tasarrufu
-                    elif segment_elevation_diff < 0:  # Yokuş aşağı
-                        # Basitleştirilmiş iniş faktörü
-                        descent_factor = min(0.1, 0.05 * (segment_gradient / 40))
-                        segment_fuel = segment_base_fuel * (1 - descent_factor)
-                    
-                    # Düz yol
-                    else:
-                        segment_fuel = segment_base_fuel
-                    
-                    total_segment_fuel += segment_fuel
-                
-                # Sonucu önbelleğe al
-                result = max(total_segment_fuel, route_distance * (base_consumption * 0.5))
-                self.energy_cache[cache_key] = result
-                return result
+                if abs_gradient >= max_egim:
+                    kazanc_orani = min_kazanc
+                else:
+                    # Optimum ile max arasında karesel azalma
+                    progress = (abs_gradient - optimum_egim) / (max_egim - optimum_egim)
+                    kazanc_orani = max_kazanc_orani - ((max_kazanc_orani - min_kazanc) * (progress ** 1.5))
+            
+            # Yük etkisini uygula
+            kazanc_orani *= yuk_etkisi
+            
+            # Gradient factor hesapla (1'den küçük olmalı - maliyet azaltma)
+            gradient_factor = 1.0 - kazanc_orani
         
-        # Yükseklik verisi yoksa veya yetersizse basit hesaplama yap
-        result = route_distance * base_consumption
-        self.energy_cache[cache_key] = result
-        return result
+        # Temel maliyet = mesafe * yük_faktörü * eğim_faktörü
+        base_cost = distance * load_factor * gradient_factor
+        
+        # Sonucu önbelleğe al
+        self.energy_cache[cache_key] = base_cost
+        return base_cost
 
     def calculate_route_segment_cost(self, origin, dest, vehicle_mass=10000):
         # Mesafe maliyeti
@@ -359,6 +371,125 @@ class OSRMHandler:
         
         print("Failed to compute distance matrix")
         return False
+
+    def get_route_details(self, origin, dest):
+        """
+        İki nokta arasındaki rota detaylarını, gerçek yol geometrisi dahil alır.
+        
+        Args:
+            origin: Başlangıç noktası (lat, lon)
+            dest: Varış noktası (lat, lon)
+            
+        Returns:
+            Rota detayları içeren sözlük veya None (hata durumunda)
+        """
+        # Önbellekte bir anahtar oluştur
+        cache_key = f"route_{tuple(origin)}_{tuple(dest)}"
+        if hasattr(self, 'route_cache') and cache_key in self.route_cache:
+            return self.route_cache[cache_key]
+        
+        # Önbellek yoksa oluştur
+        if not hasattr(self, 'route_cache'):
+            self.route_cache = {}
+        
+        # OSRM API'sine istek yap - tam rota verisini al
+        try:
+            # origin ve dest noktalarını lon,lat formatına çevir (OSRM için)
+            origin_str = f"{origin[1]},{origin[0]}"
+            dest_str = f"{dest[1]},{dest[0]}"
+            
+            # OSRM route API'sine istek yap
+            url = f"{self.base_url}/route/v1/driving/{origin_str};{dest_str}"
+            params = {
+                "overview": "full",  # Tam rota geometrisi iste
+                "geometries": "geojson",  # GeoJSON formatında geometri
+                "steps": "true",  # Rota adımlarını dahil et
+                "annotations": "true"  # Ekstra açıklamalar (mesafe, süre vs.)
+            }
+            
+            print(f"Requesting route from OSRM: {url} with params: {params}")
+            
+            # 3 deneme yapacak şekilde retry logic ekle
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = requests.get(url, params=params, timeout=self.timeout)
+                    
+                    # Log status code explicitly
+                    print(f"OSRM Response Status (attempt {attempt+1}/{max_retries}): {response.status_code}")
+                    
+                    data = response.json()
+                    
+                    # Check response status code *before* checking data content
+                    if response.status_code != 200:
+                        error_msg = data.get("message", f"HTTP Status {response.status_code}")
+                        print(f"OSRM API HTTP error (attempt {attempt+1}/{max_retries}): {error_msg}")
+                        if attempt < max_retries - 1:
+                            print(f"Retrying in 1 second...")
+                            time.sleep(1)
+                            continue
+                        return None # Failed after retries
+
+                    # Check OSRM-specific status code
+                    if data.get("code") != "Ok":
+                        error_msg = data.get("message", "Unknown OSRM error code")
+                        print(f"OSRM API specific error (attempt {attempt+1}/{max_retries}): {error_msg} (Code: {data.get('code')})")
+                        if attempt < max_retries - 1:
+                            print(f"Retrying in 1 second...")
+                            time.sleep(1)
+                            continue
+                        return None # Failed after retries
+                    
+                    # Rota bilgilerini çıkart
+                    if "routes" in data and len(data["routes"]) > 0:
+                        route = data["routes"][0]
+                        
+                        # GeoJSON geometrisi içinden koordinatları al
+                        if "geometry" in route and "coordinates" in route["geometry"]:
+                            coordinates = route["geometry"]["coordinates"]
+                            distance = route["distance"] / 1000  # metre -> km
+                            duration = route["duration"] / 60    # saniye -> dakika
+                            
+                            result = {
+                                "coordinates": coordinates,  # [[lon, lat], [lon, lat], ...]
+                                "distance": distance,        # km cinsinden
+                                "duration": duration,        # dakika cinsinden
+                                "success": True
+                            }
+                            
+                            # Önbelleğe ekle
+                            self.route_cache[cache_key] = result
+                            print(f"Successfully got route with {len(coordinates)} points, distance: {distance:.2f} km")
+                            return result
+                        else:
+                            print(f"No geometry found in OSRM response: {route.keys()}")
+                    else:
+                        print(f"No routes found in OSRM response: {data.keys()}")
+                    
+                    # Geçerli yanıt ama gerekli veriler yok
+                    return None
+                    
+                except requests.RequestException as e:
+                    print(f"Request error (attempt {attempt+1}/{max_retries}): {str(e)}")
+                    if attempt < max_retries - 1:
+                        print(f"Retrying in 1 second...")
+                        time.sleep(1)
+                    else:
+                        return None
+                except ValueError as e:
+                    print(f"JSON parsing error: {str(e)}")
+                    return None
+                except Exception as e:
+                    print(f"Unexpected error getting route details: {str(e)}")
+                    return None
+            
+            # Tüm denemeler başarısız
+            return None
+        
+        except Exception as e:
+            print(f"Error in get_route_details: {str(e)}")
+            traceback.print_exc()
+            return None
 
 def create_navigation_link(route, instance_data):
     base_url = "https://graphhopper.com/maps/?" 

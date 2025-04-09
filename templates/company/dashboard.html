@@ -570,31 +570,72 @@ document.addEventListener('DOMContentLoaded', function() {
     // Yeni Rota Oluştur butonu için event listener
     document.getElementById('createRouteBtn').addEventListener('click', async function() {
         const createRouteBtn = this;
-        
-        // Buton durumunu güncelle
-        createRouteBtn.disabled = true;
-        createRouteBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> İşleniyor...';
+        const modalBody = document.querySelector('#createRouteModal .modal-body');
+        const originalModalContent = modalBody.innerHTML;
         
         try {
+            // Butonu devre dışı bırak ve loading göster
+            createRouteBtn.disabled = true;
+            modalBody.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Yükleniyor...</span>
+                    </div>
+                    <p class="mb-0" id="statusMessage">Kontroller yapılıyor...</p>
+                </div>
+            `;
+
+            // Önce araç ve sürücü kontrolü yap
+            const checkResponse = await fetch('/api/optimize/check', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    num_customers: 0
+                })
+            });
+
+            // Yanıt kontrolü
+            if (!checkResponse.ok) {
+                const errorData = await checkResponse.json().catch(() => ({ error: 'Sunucu yanıtı alınamadı' }));
+                throw new Error(errorData.error || 'Sunucu yanıtı başarısız: ' + checkResponse.status);
+            }
+
+            const checkData = await checkResponse.json();
+            
+            if (!checkData.success) {
+                throw new Error(checkData.error || 'Ön kontroller başarısız oldu');
+            }
+
+            // Durum mesajını güncelle
+            document.getElementById('statusMessage').textContent = 'Rota hesaplanıyor...';
+            
+            // Optimizasyonu başlat
             const response = await fetch('/api/optimize', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
+                credentials: 'include',
                 body: JSON.stringify({
                     num_customers: 0
                 })
             });
-            
+
+            // Yanıt kontrolü
             if (!response.ok) {
-                throw new Error('Rota oluşturma sırasında bir hata oluştu');
+                const errorData = await response.json().catch(() => ({ error: 'Sunucu yanıtı alınamadı' }));
+                throw new Error(errorData.error || 'API yanıtı başarısız: ' + response.status);
             }
             
             const data = await response.json();
             
             if (!data.success) {
-                throw new Error(data.error || 'Bilinmeyen bir hata oluştu');
+                throw new Error(data.error || 'Rota oluşturma başarısız oldu');
             }
             
             // Başarılı olduğunda sayfayı yenile
@@ -603,17 +644,20 @@ document.addEventListener('DOMContentLoaded', function() {
             
         } catch (error) {
             console.error('Error:', error);
-            alert('Hata: ' + error.message);
+            modalBody.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <strong>Hata:</strong> ${error.message}
+                </div>
+            `;
         } finally {
-            // Buton durumunu sıfırla
+            // Butonu sıfırla
             createRouteBtn.disabled = false;
-            createRouteBtn.textContent = 'Rota Oluştur';
             
-            // Modalı kapat
-            const modal = bootstrap.Modal.getInstance(document.getElementById('createRouteModal'));
-            if (modal) {
-                modal.hide();
-            }
+            // 5 saniye sonra modal içeriğini sıfırla
+            setTimeout(() => {
+                modalBody.innerHTML = originalModalContent;
+                createRouteBtn.textContent = 'Rota Oluştur';
+            }, 5000);
         }
     });
 

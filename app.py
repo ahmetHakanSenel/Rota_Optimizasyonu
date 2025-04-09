@@ -15,7 +15,7 @@ from sqlalchemy.orm import joinedload
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.urandom(24)  # Session için gerekli
-CORS(app)
+CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}})  # CORS ayarları güncellendi
 
 # Login gerektiren sayfalar için decorator
 def login_required(f):
@@ -200,20 +200,19 @@ def optimize_route():
         
         print("\nStarting Tabu Search optimization...")
         # Tabu Search algoritmasını çalıştır
-        best_solution, best_fitness, stats = run_tabu_search(
+        routes = run_tabu_search(
             instance_data=instance_data,
-            maps_handler=map_handler,
-            max_iterations=1200,
+            individual_size=len(selected_customers),
+            n_gen=1000,
+            tabu_size=20,
             stagnation_limit=50,
-            verbose=True
+            verbose=True,
+            vehicle_capacity=vehicle_capacity
         )
         
-        if not best_solution:
+        if not routes:
             print("No solution found from Tabu Search")
             return jsonify({'error': 'No feasible solution found. Try reducing the number of customers or increasing vehicle capacity.'}), 404
-        
-        # Çözümü rotalara böl
-        routes = split_into_routes(best_solution, instance_data)
         
         print(f"\nFound solution with {len(routes)} routes")
         
@@ -374,6 +373,114 @@ def optimize_route():
         print(f"Error: {str(e)}")
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route('/api/optimize/check', methods=['POST'])
+def check_optimize_prerequisites():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    db = SessionLocal()
+    try:
+        # Kullanıcının şirket bilgisini al
+        if session['user_role'] == UserRole.COMPANY_ADMIN.value:
+            employee = db.query(CompanyEmployee).filter_by(user_id=session['user_id']).first()
+            if not employee:
+                return jsonify({'success': False, 'error': 'Şirket bilgisi bulunamadı'}), 404
+            company_id = employee.company_id
+        elif session['user_role'] == UserRole.DRIVER.value:
+            driver = db.query(Driver).filter_by(user_id=session['user_id']).first()
+            if not driver:
+                return jsonify({'success': False, 'error': 'Sürücü bilgisi bulunamadı'}), 404
+            company_id = driver.company_id
+        else:
+            return jsonify({'success': False, 'error': 'Yetkisiz erişim'}), 403
+        
+        # 1. Depo Kontrolü
+        warehouse = db.query(Warehouse).filter_by(
+            company_id=company_id,
+            is_active=True
+        ).first()
+        
+        if not warehouse:
+            return jsonify({
+                'success': False, 
+                'error': 'Şirketinize ait aktif depo bulunmuyor. Lütfen önce bir depo ekleyin ve aktif olarak işaretleyin.'
+            }), 404
+        
+        # 2. Müşteri Kontrolü
+        customers = db.query(Customer).filter_by(company_id=company_id).all()
+        
+        if len(customers) == 0:
+            return jsonify({
+                'success': False, 
+                'error': 'Şirketinize ait müşteri bulunmuyor. Lütfen önce müşteri ekleyin.'
+            }), 400
+        
+        # 3. Araç Kontrolü
+        available_vehicles = db.query(Vehicle).filter(
+            Vehicle.company_id == company_id,
+            Vehicle.status == VehicleStatus.ACTIVE,
+            ~Vehicle.id.in_(
+                db.query(Route.vehicle_id).filter(
+                    Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS])
+                )
+            )
+        ).all()
+        
+        if not available_vehicles:
+            return jsonify({
+                'success': False,
+                'error': 'Müsait araç bulunmuyor. Tüm araçlar aktif rotalarda veya bakımda.'
+            }), 400
+        
+        # 4. Sürücü Kontrolü
+        available_drivers = db.query(Driver).filter(
+            Driver.company_id == company_id,
+            ~Driver.id.in_(
+                db.query(Route.driver_id).filter(
+                    Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS])
+                )
+            )
+        ).all()
+        
+        if not available_drivers:
+            return jsonify({
+                'success': False,
+                'error': 'Müsait sürücü bulunmuyor. Tüm sürücüler aktif rotalarda.'
+            }), 400
+        
+        # 5. Kapasite Kontrolü
+        total_demand = sum(customer.desi for customer in customers)
+        total_capacity = sum(vehicle.capacity for vehicle in available_vehicles)
+        
+        if total_demand > total_capacity:
+            return jsonify({
+                'success': False,
+                'error': f'Toplam müşteri talebi ({total_demand:.2f} desi) mevcut araç kapasitesini ({total_capacity:.2f} desi) aşıyor.'
+            }), 400
+        
+        # Tüm kontroller başarılı
+        return jsonify({
+            'success': True,
+            'message': 'Rota optimizasyonu için gerekli tüm koşullar sağlanıyor.',
+            'data': {
+                'available_vehicles': len(available_vehicles),
+                'available_drivers': len(available_drivers),
+                'total_customers': len(customers),
+                'total_demand': float(total_demand),
+                'total_capacity': float(total_capacity)
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error in check_optimize_prerequisites: {str(e)}")
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': f'Ön kontroller sırasında bir hata oluştu: {str(e)}'
+        }), 500
     finally:
         db.close()
 

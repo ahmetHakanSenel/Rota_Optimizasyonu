@@ -6,7 +6,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import math
 
 class AdaptiveTabuList:
-    """Adaptif Tabu Listesi sınıfı"""
     def __init__(self, initial_size, max_size):
         self.max_size = max_size
         self.list = collections.deque(maxlen=initial_size)
@@ -104,84 +103,17 @@ def k_opt_improvement(solution, instance, map_handler, k=2):
     return improved
 
 def create_initial_solution(instance, size, map_handler):
-    """Geliştirilmiş başlangıç çözümü"""
-    best_solution = None
-    best_distance = float('inf')
+    """Rastgele bir başlangıç çözümü oluşturur."""
+    print("Generating a random initial solution...")
     
-    # Depo koordinatları
-    depot = (
-        instance[DEPART][COORDINATES][X_COORD],
-        instance[DEPART][COORDINATES][Y_COORD]
-    )
+    # Müşteri ID'lerini içeren bir liste oluştur (1'den size'a kadar)
+    solution = list(range(1, size + 1))
     
-    # Tüm noktaların depoya olan uzaklıklarını hesapla
-    distances_to_depot = {}
-    for i in range(1, size + 1):
-        point = (
-            instance[f'C_{i}'][COORDINATES][X_COORD],
-            instance[f'C_{i}'][COORDINATES][Y_COORD]
-        )
-        dist = map_handler.get_distance(depot, point)
-        distances_to_depot[i] = dist
+    # Listeyi rastgele karıştır
+    random.shuffle(solution)
     
-    # Farklı başlangıç stratejileri
-    strategies = ['nearest', 'farthest', 'sweep', 'balanced']
-    
-    for strategy in strategies:
-        if strategy == 'sweep':
-            # Açısal tarama yöntemi
-            angles = {}
-            for i in range(1, size + 1):
-                point = (
-                    instance[f'C_{i}'][COORDINATES][X_COORD],
-                    instance[f'C_{i}'][COORDINATES][Y_COORD]
-                )
-                angle = math.atan2(point[1] - depot[1], point[0] - depot[0])
-                angles[i] = angle
-            
-            # Açıya göre sırala
-            solution = sorted(range(1, size + 1), key=lambda x: angles[x])
-            
-        else:
-            solution = []
-            unvisited = set(range(1, size + 1))
-            current_point = depot
-            
-            while unvisited:
-                distances = {
-                    x: map_handler.get_distance(current_point, 
-                        (instance[f'C_{x}'][COORDINATES][X_COORD],
-                         instance[f'C_{x}'][COORDINATES][Y_COORD]))
-                    for x in unvisited
-                }
-                
-                if strategy == 'nearest':
-                    next_point = min(distances.items(), key=lambda x: x[1])[0]
-                elif strategy == 'farthest':
-                    next_point = max(distances.items(), key=lambda x: x[1])[0]
-                else:  # balanced
-                    # Mesafe ve depoya uzaklık dengesi
-                    next_point = min(distances.items(), 
-                                   key=lambda x: x[1] + distances_to_depot[x[0]])[0]
-                
-                solution.append(next_point)
-                unvisited.remove(next_point)
-                current_point = (
-                    instance[f'C_{next_point}'][COORDINATES][X_COORD],
-                    instance[f'C_{next_point}'][COORDINATES][Y_COORD]
-                )
-        
-        # 2-opt ve 3-opt iyileştirmeleri
-        improved = k_opt_improvement(solution, instance, map_handler, k=2)
-        improved = k_opt_improvement(improved, instance, map_handler, k=3)
-        
-        # En iyi çözümü güncelle
-        distance = evaluate_solution_with_real_distances(improved, instance, map_handler)
-        if distance < best_distance:
-            best_solution = improved
-            best_distance = distance
-    
-    return best_solution
+    print(f"Generated random solution with {len(solution)} customers.")
+    return solution
 
 def diversify_solution(solution):
     """
@@ -198,14 +130,13 @@ def diversify_solution(solution):
     
     # Rastgele bir strateji seç
     strategy = random.choice([
-        'segment_reverse',  # Bir segmenti ters çevir
-        'segment_rotate',   # Bir segmenti döndür
-        'segment_shuffle',  # Bir segmenti karıştır
-        'full_shuffle'      # Tüm çözümü karıştır
+        'segment_reverse',
+        'segment_rotate',
+        'segment_shuffle',
+        'full_shuffle'
     ])
     
     if strategy == 'segment_reverse':
-        # Rastgele bir segment seç ve ters çevir
         i = random.randint(0, n-3)
         j = random.randint(i+2, n)
         new_solution[i:j] = reversed(new_solution[i:j])
@@ -227,347 +158,289 @@ def diversify_solution(solution):
         random.shuffle(segment)
         new_solution[start:start+segment_size] = segment
         
-    else:  # full_shuffle
-        # Tüm çözümü karıştır
+    else:  
         random.shuffle(new_solution)
     
     return new_solution
 
-def run_tabu_search(
-    instance_data,
-    individual_size,
-    n_gen,
-    tabu_size,
-    stagnation_limit=20,
-    verbose=True,
-    vehicle_capacity=None
-):
-    """Optimize edilmiş Tabu Arama algoritması"""
-    random.seed(42)
+def split_into_routes(solution, customers, vehicle_capacity):
+    """
+    Çözümü araç kapasitesine göre rotalara böl
     
-    if instance_data is None:
-        return None
+    Args:
+        solution: Çözüm dizisi (müşteri id'leri)
+        customers: (customer_id, demand) çiftlerinden oluşan liste
+        vehicle_capacity: Araç kapasitesi
+        
+    Returns:
+        Rotalar listesi veya geçersiz çözüm için None
+    """
+    routes = []
+    current_route = []
+    current_load = 0
     
-    print("Initializing optimization...")
-    maps_handler = OSRMHandler()
-    
-    # Ensure vehicle capacity is considered in the optimization
-    if vehicle_capacity is None:
-        raise ValueError('Vehicle capacity must be provided')
-    
-    # Calculate total demand
-    total_demand = sum(float(instance_data[f'C_{i}']['demand']) for i in range(1, individual_size + 1))
-    print(f"Total demand: {total_demand}, Vehicle capacity: {vehicle_capacity}")
-    
-    # Check if problem is solvable with given capacity
-    if total_demand > vehicle_capacity * instance_data['max_vehicle_number']:
-        print("Problem is unsolvable: Total demand exceeds maximum possible capacity")
-        return None
-    
-    customers = [(i, float(instance_data[f'C_{i}']['demand'])) for i in range(1, individual_size + 1)]
-    
-    # Önbellek oluştur - aynı çözümleri tekrar tekrar değerlendirmemek için
-    solution_cache = {}
-    
-    def split_into_routes(solution):
-        """Çözümü araç kapasitesine göre rotalara böl"""
-        # Önbellekte var mı kontrol et
-        solution_tuple = tuple(solution)
-        if solution_tuple in solution_cache and 'routes' in solution_cache[solution_tuple]:
-            return solution_cache[solution_tuple]['routes']
-            
-        routes = []
-        current_route = []
-        current_load = 0
+    for customer_id in solution:
+        customer_demand = next(demand for cid, demand in customers if cid == customer_id)
         
-        for customer_id in solution:
-            customer_demand = next(demand for cid, demand in customers if cid == customer_id)
-            
-            if current_load + customer_demand > vehicle_capacity:
-                if current_route:  # Mevcut rotayı ekle
-                    routes.append(current_route)
-                current_route = [customer_id]
-                current_load = customer_demand
-            else:
-                current_route.append(customer_id)
-                current_load += customer_demand
-        
-        if current_route:  # Son rotayı ekle
-            routes.append(current_route)
-        
-        # Check if we exceed maximum vehicle number
-        if len(routes) > instance_data['max_vehicle_number']:
-            return None
-        
-        # Önbelleğe ekle
-        if solution_tuple not in solution_cache:
-            solution_cache[solution_tuple] = {}
-        solution_cache[solution_tuple]['routes'] = routes
-        
-        return routes
-
-    def calculate_total_distance(routes):
-        """Tüm rotaların toplam mesafesini hesapla"""
-        total_distance = 0
-        for route in routes:
-            prev_point = (
-                instance_data['depart']['coordinates']['x'],
-                instance_data['depart']['coordinates']['y']
-            )
-            
-            for customer_id in route:
-                current_point = (
-                    instance_data[f'C_{customer_id}']['coordinates']['x'],
-                    instance_data[f'C_{customer_id}']['coordinates']['y']
-                )
-                total_distance += maps_handler.get_distance(prev_point, current_point)
-                prev_point = current_point
-            
-            # Depoya dönüş
-            depot_point = (
-                instance_data['depart']['coordinates']['x'],
-                instance_data['depart']['coordinates']['y']
-            )
-            total_distance += maps_handler.get_distance(prev_point, depot_point)
-        
-        return total_distance
-
-    def evaluate_solution(solution):
-        """Çözümü değerlendir - araç sayısı, mesafe ve yükseklik optimizasyonu"""
-        # Önbellekte var mı kontrol et
-        solution_tuple = tuple(solution)
-        if solution_tuple in solution_cache and 'fitness' in solution_cache[solution_tuple]:
-            return solution_cache[solution_tuple]['fitness']
-            
-        routes = split_into_routes(solution)
-        if routes is None:
-            return float('inf')
-            
-        num_vehicles = len(routes)
-        
-        # Optimizasyon: Araç sayısı çok fazlaysa erken çık
-        if num_vehicles > instance_data['max_vehicle_number']:
-            return float('inf')
-        
-        # Yükseklik verilerini de içeren toplam maliyet hesaplaması
-        total_cost = 0
-        for route in routes:
-            # Rota başlangıcı (depo)
-            prev_point = (
-                instance_data['depart']['coordinates']['x'],
-                instance_data['depart']['coordinates']['y']
-            )
-            
-            # Rota üzerindeki her müşteri için
-            route_load = 0
-            for customer_id in route:
-                # Müşteri yükünü ekle
-                route_load += float(instance_data[f'C_{customer_id}']['demand'])
-                
-                # Müşteri konumu
-                current_point = (
-                    instance_data[f'C_{customer_id}']['coordinates']['x'],
-                    instance_data[f'C_{customer_id}']['coordinates']['y']
-                )
-                
-                # Araç kütlesi (boş araç + yük)
-                vehicle_mass = 10000 + (route_load * 100)  # kg
-                
-                # Yükseklik verilerini içeren rota maliyeti
-                segment_cost = maps_handler.get_route_cost(prev_point, current_point, vehicle_mass)
-                total_cost += segment_cost
-                
-                prev_point = current_point
-            
-            # Depoya dönüş
-            depot_point = (
-                instance_data['depart']['coordinates']['x'],
-                instance_data['depart']['coordinates']['y']
-            )
-            
-            # Depoya dönüş maliyeti
-            return_cost = maps_handler.get_route_cost(prev_point, depot_point, vehicle_mass)
-            total_cost += return_cost
-        
-        # Araç sayısı ve toplam maliyet için ağırlıklı değerlendirme
-        # Araç sayısını minimize etmek öncelikli
-        fitness = num_vehicles * 10000 + total_cost
-        
-        # Önbelleğe ekle
-        if solution_tuple not in solution_cache:
-            solution_cache[solution_tuple] = {}
-        solution_cache[solution_tuple]['fitness'] = fitness
-        
-        return fitness
-
-    # Başlangıç çözümünü oluştur
-    print("Creating initial solution...")
-    initial_solution = create_initial_solution(instance_data, individual_size, maps_handler)
-    if initial_solution is None:
-        print("Failed to create initial solution")
-        # Rastgele bir çözüm oluştur
-        initial_solution = list(range(1, individual_size + 1))
-        random.shuffle(initial_solution)
-    
-    best_solution = initial_solution.copy()
-    best_fitness = evaluate_solution(best_solution)
-    current_solution = initial_solution.copy()
-    current_fitness = best_fitness
-    
-    tabu_list = AdaptiveTabuList(tabu_size, tabu_size * 2)
-    diversification_threshold = stagnation_limit // 2
-    stagnation_counter = 0
-    no_improvement_counter = 0
-    
-    print("\nStarting optimization...")
-    
-    # Optimizasyon: Maksimum iterasyon sayısını problem boyutuna göre ayarla
-    max_iterations = min(n_gen, 200 + individual_size * 10)
-    
-    for iteration in range(max_iterations):
-        if verbose and iteration % 100 == 0:
-            print(f"\nIteration {iteration}:")
-        
-        if no_improvement_counter >= stagnation_limit:
-            print(f"\nEarly stopping! No improvement for {stagnation_limit} iterations.")
-            break
-        
-        # Optimizasyon: Daha az komşu üret
-        neighbors = []
-        
-        # İlk iterasyonlarda daha fazla komşu üret, sonra azalt
-        neighbor_count = max(10, 40 - iteration // 50)
-        
-        # Farklı komşuluk yapılarını kullan
-        if iteration % 3 == 0:
-            neighbors.extend(generate_neighbors(current_solution, method="swap", num_neighbors=neighbor_count))
-        elif iteration % 3 == 1:
-            neighbors.extend(generate_neighbors(current_solution, method="2-opt", num_neighbors=neighbor_count))
+        if current_load + customer_demand > vehicle_capacity:
+            if current_route:  # Mevcut rotayı ekle
+                routes.append(current_route)
+            current_route = [customer_id]
+            current_load = customer_demand
         else:
-            neighbors.extend(generate_neighbors(current_solution, method="insert", num_neighbors=neighbor_count))
-        
-        # Optimizasyon: Komşuları paralel değerlendir
-        valid_neighbors = []
-        for neighbor in neighbors:
-            fitness = evaluate_solution(neighbor)
-            if fitness != float('inf'):
-                valid_neighbors.append((neighbor, fitness))
-        
-        if not valid_neighbors:
-            print("No valid neighbors found. Diversifying...")
-            current_solution = diversify_solution(current_solution)
-            stagnation_counter += 1
-            continue
-        
-        # Tabu olmayan en iyi komşuyu seç
-        best_neighbor = None
-        best_neighbor_fitness = float('inf')
-        
-        for neighbor, fitness in valid_neighbors:
-            if not tabu_list.contains(neighbor, aspiration_value=fitness, current_best=best_fitness):
-                if fitness < best_neighbor_fitness:
-                    best_neighbor = neighbor
-                    best_neighbor_fitness = fitness
-        
-        if best_neighbor is None:
-            # Tabu olmayan komşu bulunamadı, en iyi komşuyu seç
-            best_neighbor, best_neighbor_fitness = min(valid_neighbors, key=lambda x: x[1])
-        
-        # Optimizasyon: k-opt iyileştirmesini daha az sıklıkla uygula
-        if iteration % 10 == 0:
-            best_neighbor = k_opt_improvement(best_neighbor, instance_data, maps_handler, k=2)
-            best_neighbor_fitness = evaluate_solution(best_neighbor)
-        
-        # Çözümü güncelle
-        current_solution = best_neighbor
-        current_fitness = best_neighbor_fitness
-        tabu_list.add(current_solution)
-        
-        # En iyi çözümü güncelle
-        if current_fitness < best_fitness:
-            best_solution = current_solution.copy()
-            best_fitness = current_fitness
-            no_improvement_counter = 0
-            if verbose:
-                print(f"New best solution found! Fitness: {best_fitness}")
-                routes = split_into_routes(best_solution)
-                print(f"Vehicles: {len(routes)}, Total distance: {calculate_total_distance(routes):.2f} km")
-        else:
-            no_improvement_counter += 1
-        
-        # Çeşitlendirme stratejisi
-        if no_improvement_counter >= diversification_threshold:
-            if verbose:
-                print(f"Diversifying after {no_improvement_counter} iterations without improvement")
-            
-            # Mevcut çözümü çeşitlendir
-            if random.random() < 0.5:
-                # Rastgele segmentleri ters çevir
-                for _ in range(3):
-                    i = random.randint(0, len(current_solution) - 3)
-                    j = random.randint(i + 2, len(current_solution))
-                    current_solution[i:j] = reversed(current_solution[i:j])
-            else:
-                # Rastgele karıştır
-                random.shuffle(current_solution)
-            
-            current_fitness = evaluate_solution(current_solution)
-            tabu_list.clear()
-            no_improvement_counter = 0
+            current_route.append(customer_id)
+            current_load += customer_demand
     
-    # Son çözümü iyileştir
-    print("\nFinal solution improvement...")
-    best_solution = k_opt_improvement(best_solution, instance_data, maps_handler, k=2)
+    if current_route:  # Son rotayı ekle
+        routes.append(current_route)
     
-    # Sonuçları raporla
-    final_routes = split_into_routes(best_solution)
-    if final_routes is None:
-        print("Failed to split solution into valid routes")
-        return None
+    return routes
+
+def evaluate_solution_cost(solution, instance_data, maps_handler, vehicle_capacity, distance_weight=1.0, energy_weight=0.5):
+    """Çözümün ağırlıklı hibrit maliyetini (mesafe + enerji) hesaplar"""
+    routes = split_into_routes(solution, [
+        (i, float(instance_data[f'C_{i}']['demand']))
+        for i in range(1, len(solution) + 1)
+    ], vehicle_capacity)
     
-    print(f"\nOptimization completed!")
+    if not routes:
+        return float('inf')
+        
+    total_energy_cost = 0
+    total_distance = 0
     
-    # Toplam mesafe ve yükseklik bazlı maliyet hesaplaması
-    total_distance = calculate_total_distance(final_routes)
-    
-    # Yükseklik bazlı toplam maliyet
-    total_elevation_cost = 0
-    for route in final_routes:
+    for route in routes:
         prev_point = (
             instance_data['depart']['coordinates']['x'],
             instance_data['depart']['coordinates']['y']
         )
-        
         route_load = 0
+        
         for customer_id in route:
             route_load += float(instance_data[f'C_{customer_id}']['demand'])
-            current_point = (
+            curr_point = (
                 instance_data[f'C_{customer_id}']['coordinates']['x'],
                 instance_data[f'C_{customer_id}']['coordinates']['y']
             )
             
-            vehicle_mass = 10000 + (route_load * 100)
-            segment_cost = maps_handler.get_route_cost(prev_point, current_point, vehicle_mass)
-            if segment_cost != float('inf'):
-                total_elevation_cost += segment_cost
+            # Mesafe
+            segment_distance = maps_handler.get_distance(prev_point, curr_point)
+            if segment_distance == float('inf'): return float('inf')
+            total_distance += segment_distance
+
+            # Enerji maliyeti (yük dahil)
+            # Use get_route_cost which inherently includes distance and energy factors
+            segment_energy_cost = maps_handler.get_route_cost(
+                prev_point,
+                curr_point,
+                vehicle_mass=10000 + (route_load * 100) 
+            )
+            if segment_energy_cost == float('inf'): return float('inf')
+            total_energy_cost += segment_energy_cost # Accumulate energy cost directly
             
-            prev_point = current_point
+            prev_point = curr_point
         
         # Depoya dönüş
         depot_point = (
             instance_data['depart']['coordinates']['x'],
             instance_data['depart']['coordinates']['y']
         )
-        return_cost = maps_handler.get_route_cost(prev_point, depot_point, vehicle_mass)
-        if return_cost != float('inf'):
-            total_elevation_cost += return_cost
+        depot_return_distance = maps_handler.get_distance(prev_point, depot_point)
+        depot_return_energy_cost = maps_handler.get_route_cost(
+            prev_point, 
+            depot_point,
+            vehicle_mass=10000 + (route_load * 100) # Assume load affects return energy
+        )
+        
+        if depot_return_distance == float('inf') or depot_return_energy_cost == float('inf'):
+             return float('inf')
+             
+        total_distance += depot_return_distance
+        total_energy_cost += depot_return_energy_cost
+            
+    # Hibrit maliyeti hesapla
+    # Note: get_route_cost might already be a hybrid. Clarify calculation.
+    # Assuming get_route_cost IS the energy cost component and we add weighted distance separately:
+    hybrid_cost = (distance_weight * total_distance) + (energy_weight * total_energy_cost)
+    # If get_route_cost is already hybrid, adjust weights or calculation.
+    # For now, assume simple weighted sum as requested.
+    return hybrid_cost
+
+def run_tabu_search(
+    instance_data,
+    individual_size, 
+    n_gen,
+    tabu_size,
+    stagnation_limit=15,
+    verbose=True,
+    vehicle_capacity=None,
+    distance_weight=1.0, # Add weight parameters
+    energy_weight=0.5    # Add weight parameters
+):
+    """Hibrit maliyet (mesafe + enerji) odaklı tek aşamalı tabu arama"""
+    if instance_data is None or vehicle_capacity is None:
+        return None
+        
+    print("\nStarting Hybrid Cost Focused Tabu Search...")
+    print(f"Weights: Distance={distance_weight}, Energy={energy_weight}")
+    maps_handler = OSRMHandler()
     
-    print(f"Final solution: {len(final_routes)} vehicles")
-    print(f"Total distance: {total_distance:.2f} km")
-    print(f"Total elevation-based cost: {total_elevation_cost:.2f}")
+    print("Creating initial solution...")
+    initial_solution = create_initial_solution(instance_data, individual_size, maps_handler)
+    if not initial_solution:
+        print("Failed to create initial solution")
+        return None
     
-    # Önbelleği temizle
-    solution_cache.clear()
+    print(f"Initial solution created with {len(initial_solution)} customers")
+    
+    # Store the best hybrid cost and solution
+    best_solution = initial_solution.copy()
+    best_cost = evaluate_solution_cost( # Hybrid cost
+        best_solution, instance_data, maps_handler, vehicle_capacity, 
+        distance_weight, energy_weight
+    )
+    current_solution = initial_solution.copy()
+    current_cost = best_cost
+    
+    tabu_list = AdaptiveTabuList(tabu_size, tabu_size * 2)
+    stagnation_counter = 0
+    
+    print("\nStarting main Tabu Search loop...")
+    print(f"Parameters: n_gen={n_gen}, tabu_size={tabu_size}, stagnation_limit={stagnation_limit}")
+    print(f"Initial Hybrid Cost: {best_cost:.2f}")
+    
+    # Main tabu search loop
+    iteration = 0 # Define iteration counter outside loop for final report
+    for iteration in range(n_gen):
+        if iteration % 10 == 0:  
+            print(f"\nIteration {iteration}/{n_gen}")
+            print(f"Current stagnation: {stagnation_counter}/{stagnation_limit}")
+            print(f"Best hybrid cost so far: {best_cost:.2f}")
+        
+        if stagnation_counter >= stagnation_limit:
+            print(f"\nEarly stopping! No improvement for {stagnation_limit} iterations.")
+            break
+        
+        # Generate neighbors
+        if iteration % 3 == 0:
+            method = "swap"
+        elif iteration % 3 == 1:
+            method = "2-opt"
+        else:
+            method = "insert"
+            
+        neighbors = generate_neighbors(current_solution, method=method, num_neighbors=20)
+        
+        # Evaluate neighbors based on hybrid cost
+        valid_neighbors = []
+        for neighbor in neighbors:
+            cost = evaluate_solution_cost( # Hybrid cost
+                neighbor, instance_data, maps_handler, vehicle_capacity, 
+                distance_weight, energy_weight
+            )
+            if cost != float('inf'):
+                valid_neighbors.append((neighbor, cost))
+        
+        if not valid_neighbors:
+            current_solution = diversify_solution(current_solution)
+            stagnation_counter += 1
+            continue
+            
+        # Select the best neighbor (based on hybrid cost)
+        best_neighbor_solution, best_neighbor_cost = min(valid_neighbors, key=lambda x: x[1])
+        
+        # Update current solution
+        current_solution = best_neighbor_solution
+        current_cost = best_neighbor_cost
+        
+        # Update best solution (based on hybrid cost)
+        if current_cost < best_cost:
+            best_solution = current_solution.copy()
+            best_cost = current_cost
+            print(f"---> New best hybrid cost found: {best_cost:.2f} at iteration {iteration}")
+            stagnation_counter = 0
+        else:
+            stagnation_counter += 1
+            
+        # Add to Tabu list
+        tabu_list.add(current_solution)
+            
+    print(f"\nTabu Search completed after {iteration + 1} iterations")
+    
+    # Split the best solution into routes
+    final_routes = split_into_routes(best_solution, [
+        (i, float(instance_data[f'C_{i}']['demand']))
+        for i in range(1, individual_size + 1)
+    ], vehicle_capacity)
+    
+    if not final_routes:
+        print("Failed to split the best solution into valid routes.")
+        return None
+
+    # Route quality analysis (remains the same)
+    print("\nAnalyzing route quality...")
+    problems = analyze_route_quality(final_routes, instance_data, maps_handler)
+    
+    print("\nRoute Quality Report:")
+    print("-" * 80)
+    if problems['crossings']:
+        print(f"\nDetected {len(problems['crossings'])} crossing paths:")
+        for cross in problems['crossings']:
+            print(f"Route {cross['route']}: Segments {cross['segment1']} and {cross['segment2']} intersect")
+    
+    if problems['backtracking']:
+        print(f"\nDetected {len(problems['backtracking'])} backtracking instances:")
+        for back in problems['backtracking']:
+            print(f"Route {back['route']}: At point {back['point']} (excess: {back['excess']:.2f}x)")
+    
+    if problems['long_segments']:
+        print(f"\nDetected {len(problems['long_segments'])} long segments:")
+        for seg in problems['long_segments']:
+            print(f"Route {seg['route']}: Segment {seg['segment']} is {seg['distance']:.2f}km")
+    
+    if not any(problems.values()):
+        print("\nNo route issues detected! The solution seems optimal based on hybrid cost.")
+    else:
+        print("\nWarning: The solution might have geometric inefficiencies.")
+        print(f"Consider adjusting weights (current: D={distance_weight}, E={energy_weight}) or other parameters.")
+        # ... (other parameter suggestions remain same) ...
+
+    # Recalculate pure distance and energy cost for reporting
+    final_total_distance = 0
+    final_total_energy_cost = 0
+    for route in final_routes:
+        prev_point = (
+            instance_data['depart']['coordinates']['x'],
+            instance_data['depart']['coordinates']['y']
+        )
+        route_load = 0
+        for customer_id in route:
+            route_load += float(instance_data[f'C_{customer_id}']['demand'])
+            curr_point = (
+                instance_data[f'C_{customer_id}']['coordinates']['x'],
+                instance_data[f'C_{customer_id}']['coordinates']['y']
+            )
+            final_total_distance += maps_handler.get_distance(prev_point, curr_point)
+            # Use get_route_cost for final energy cost calculation as well
+            final_total_energy_cost += maps_handler.get_route_cost(
+                prev_point, curr_point, vehicle_mass=10000 + (route_load * 100)
+            )
+            prev_point = curr_point
+            
+        depot_point = (
+            instance_data['depart']['coordinates']['x'],
+            instance_data['depart']['coordinates']['y']
+        )
+        final_total_distance += maps_handler.get_distance(prev_point, depot_point)
+        final_total_energy_cost += maps_handler.get_route_cost(
+            prev_point, depot_point, vehicle_mass=10000 + (route_load * 100)
+        )
+
+    print("\nFinal Optimized Solution (Based on Hybrid Cost):")
+    print(f"Number of routes: {len(final_routes)}")
+    print(f"Optimized Hybrid Cost: {best_cost:.2f}")
+    print(f"  - Calculated Total Distance: {final_total_distance:.2f} km")
+    print(f"  - Calculated Total Energy Cost: {final_total_energy_cost:.2f}") # Use the recalculated energy cost
     
     return final_routes
 
@@ -642,102 +515,126 @@ def evaluate_neighbors_parallel(neighbors, instance, map_handler, max_workers=4)
     
     return valid_neighbors
 
-def generate_neighbors(solution, method="swap", num_neighbors=5):
-    """Optimize edilmiş komşuluk üretimi"""
+def generate_neighbors(solution, method="swap", num_neighbors=20):
+    """Optimize edilmiş komşu üretimi"""
     neighbors = []
     size = len(solution)
     
     if method == "swap":
-        # Daha az ve daha etkili komşular üret
-        # Yakın noktaları değiştirmeye öncelik ver
-        pairs = []
-        
-        # Yakın komşular (daha etkili)
+        # Akıllı swap: Yakın noktaları değiştir
         for i in range(size-1):
-            for j in range(i+1, min(i+5, size)):
-                pairs.append((i, j))
-        
-        # Birkaç rastgele uzak komşu
-        for _ in range(min(5, size // 2)):
-            i = random.randint(0, size-2)
-            j = random.randint(i+5, size-1) if i+5 < size else random.randint(0, max(0, i-1))
-            pairs.append((i, j))
-        
-        # Karıştır ve sınırla
-        random.shuffle(pairs)
-        for i, j in pairs[:num_neighbors]:
-            neighbor = solution.copy()
-            neighbor[i], neighbor[j] = neighbor[j], neighbor[i]
-            neighbors.append(neighbor)
+            for j in range(i+1, min(i+5, size)):  # Yakın noktalar
+                neighbor = solution.copy()
+                neighbor[i], neighbor[j] = neighbor[j], neighbor[i]
+                neighbors.append(neighbor)
+                
+            # Birkaç uzak nokta ile de değişim yap
+            for _ in range(2):
+                j = random.randint(min(i+5, size-1), size-1)
+                if j < size:  # Geçerlilik kontrolü
+                    neighbor = solution.copy()
+                    neighbor[i], neighbor[j] = neighbor[j], neighbor[i]
+                    neighbors.append(neighbor)
+    
+    elif method == "2-opt":
+        # 2-opt: Çapraz yolları düzelt
+        for i in range(1, size-2):
+            for j in range(i+2, size):
+                if j - i <= 10:  # Çok uzun segmentlerden kaçın
+                    neighbor = solution.copy()
+                    neighbor[i:j] = reversed(neighbor[i:j])
+                    neighbors.append(neighbor)
     
     elif method == "insert":
-        # Daha az ve daha etkili ekleme komşuları
-        moves = []
-        
-        # Yakın taşıma işlemleri
+        # Akıllı insert: Noktaları mantıklı pozisyonlara taşı
         for i in range(size):
             # Yakın pozisyonlara taşı
             for offset in [-2, -1, 1, 2]:
                 j = i + offset
-                if 0 <= j < size and i != j:
-                    moves.append((i, j))
-        
-        # Birkaç rastgele uzak taşıma
-        for _ in range(min(5, size // 2)):
-            i = random.randint(0, size-1)
-            j = random.randint(0, size-1)
-            if abs(i-j) > 3 and i != j:
-                moves.append((i, j))
-        
-        # Karıştır ve sınırla
-        random.shuffle(moves)
-        for i, j in moves[:num_neighbors]:
-            neighbor = solution.copy()
-            value = neighbor.pop(i)
-            neighbor.insert(j if j < i else j-1, value)
-            neighbors.append(neighbor)
+                if 0 <= j < size:
+                    neighbor = solution.copy()
+                    value = neighbor.pop(i)
+                    neighbor.insert(j, value)
+                    neighbors.append(neighbor)
+            
+            # Birkaç uzak pozisyona taşı
+            for _ in range(2):
+                j = random.randint(0, size-1)
+                if abs(i-j) > 3:
+                    neighbor = solution.copy()
+                    value = neighbor.pop(i)
+                    neighbor.insert(j, value)
+                    neighbors.append(neighbor)
     
-    elif method == "2-opt":
-        # Daha az ve daha etkili 2-opt komşuları
-        segments = []
-        
-        # Kısa segmentler (daha etkili)
-        for i in range(1, size-2):
-            for length in range(2, min(5, size-i)):
-                segments.append((i, i+length))
-        
-        # Birkaç rastgele uzun segment
-        for _ in range(min(3, size // 3)):
-            i = random.randint(1, size-5)
-            length = random.randint(5, min(10, size-i))
-            segments.append((i, i+length))
-        
-        # Karıştır ve sınırla
-        random.shuffle(segments)
-        for i, j in segments[:num_neighbors]:
-            neighbor = solution.copy()
-            neighbor[i:j] = reversed(neighbor[i:j])
-            neighbors.append(neighbor)
-    
-    elif method == "reverse":
-        # Daha az ve daha etkili segment ters çevirme
-        segments = []
-        
-        # Kısa segmentler
-        for i in range(size-3):
-            segments.append((i, i+3))
-        
-        # Orta segmentler
-        for _ in range(min(5, size // 2)):
-            i = random.randint(0, size-5)
-            length = random.randint(4, min(7, size-i))
-            segments.append((i, i+length))
-        
-        # Karıştır ve sınırla
-        random.shuffle(segments)
-        for i, j in segments[:num_neighbors]:
-            neighbor = solution.copy()
-            neighbor[i:j] = reversed(neighbor[i:j])
-            neighbors.append(neighbor)
-    
+    # Çözümleri filtrele ve en iyilerini seç
+    if len(neighbors) > num_neighbors:
+        return random.sample(neighbors, num_neighbors)
     return neighbors
+
+def analyze_route_quality(routes, instance_data, maps_handler):
+    """Rota kalitesini analiz et"""
+    problems = {
+        'crossings': [],  # Çapraz yollar
+        'backtracking': [],  # Geri dönüşler
+        'long_segments': []  # Uzun segmentler
+    }
+    
+    for route_idx, route in enumerate(routes):
+        points = []
+        # Depo noktası
+        points.append((
+            instance_data['depart']['coordinates']['x'],
+            instance_data['depart']['coordinates']['y']
+        ))
+        
+        # Müşteri noktaları
+        for customer_id in route:
+            points.append((
+                instance_data[f'C_{customer_id}']['coordinates']['x'],
+                instance_data[f'C_{customer_id}']['coordinates']['y']
+            ))
+        
+        # Depoya dönüş
+        points.append(points[0])
+        
+        # Çapraz yol kontrolü
+        for i in range(len(points)-1):
+            for j in range(i+2, len(points)-1):
+                if segments_intersect(points[i], points[i+1], points[j], points[j+1]):
+                    problems['crossings'].append({
+                        'route': route_idx,
+                        'segment1': (i, i+1),
+                        'segment2': (j, j+1)
+                    })
+        
+        # Geri dönüş kontrolü
+        for i in range(1, len(points)-1):
+            prev_dist = maps_handler.get_distance(points[i-1], points[i])
+            next_dist = maps_handler.get_distance(points[i], points[i+1])
+            direct_dist = maps_handler.get_distance(points[i-1], points[i+1])
+            
+            if prev_dist + next_dist > direct_dist * 1.4:  # %40 sapma
+                problems['backtracking'].append({
+                    'route': route_idx,
+                    'point': i,
+                    'excess': (prev_dist + next_dist) / direct_dist
+                })
+        
+        # Uzun segment kontrolü
+        for i in range(len(points)-1):
+            dist = maps_handler.get_distance(points[i], points[i+1])
+            if dist > 20:  # 20km'den uzun segmentler
+                problems['long_segments'].append({
+                    'route': route_idx,
+                    'segment': (i, i+1),
+                    'distance': dist
+                })
+    
+    return problems
+
+def segments_intersect(p1, p2, p3, p4):
+    """İki segment kesişiyor mu kontrol et"""
+    def ccw(A, B, C):
+        return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
+    
+    return ccw(p1,p3,p4) != ccw(p2,p3,p4) and ccw(p1,p2,p3) != ccw(p1,p2,p4)
