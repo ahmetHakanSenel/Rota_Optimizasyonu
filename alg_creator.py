@@ -259,11 +259,7 @@ def evaluate_solution_cost(solution, instance_data, maps_handler, vehicle_capaci
         total_energy_cost += depot_return_energy_cost
             
     # Hibrit maliyeti hesapla
-    # Note: get_route_cost might already be a hybrid. Clarify calculation.
-    # Assuming get_route_cost IS the energy cost component and we add weighted distance separately:
     hybrid_cost = (distance_weight * total_distance) + (energy_weight * total_energy_cost)
-    # If get_route_cost is already hybrid, adjust weights or calculation.
-    # For now, assume simple weighted sum as requested.
     return hybrid_cost
 
 def run_tabu_search(

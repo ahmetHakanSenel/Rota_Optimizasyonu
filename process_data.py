@@ -8,7 +8,7 @@ import numpy as np
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Sabit değişkenler
+
 X_COORD = 'x'  
 Y_COORD = 'y'  
 COORDINATES = 'coordinates'  
@@ -93,7 +93,7 @@ class OSRMHandler:
             else:
                 # OSRM'den gelen rota koordinatlarını kullan
                 route = data["routes"][0]
-                # OSRM koordinatları [lon, lat] formatında döndürür, biz [lat, lon] kullanıyoruz
+                # OSRM koordinatları [lon, lat] formatında döndürür, [lat, lon] kullanıyoruz
                 route_coords = [(coord[1], coord[0]) for coord in route["geometry"]["coordinates"]]
                 total_distance = route["distance"]
                 duration = route["duration"]
@@ -152,25 +152,16 @@ class OSRMHandler:
             return None
 
     def calculate_energy_cost(self, route_segment, vehicle_mass=10000):
-        """
-        İki nokta arasındaki toplam enerji maliyetini, literatüre dayalı eğim ve yük etkilerini kullanarak hesaplar.
-        
-        Args:
-            route_segment: [origin, dest] şeklinde koordinatlar listesi
-            vehicle_mass: Araç kütlesi (kg) (yük dahil)
-            
-        Returns:
-            Toplam enerji maliyeti
-        """
         import math
+        import numpy as np
         
         start_point = route_segment[0]
         end_point = route_segment[1]
         
-        # Önce mesafeyi kontrol et - çok kısa mesafeler için hesaplama yapma
+        #mesafeyi kontrolü - çok kısa mesafeler için hesaplama yok
         distance = self.get_distance(start_point, end_point)
-        if distance < 0.1:  # 100 metre altındaki mesafeler için basitleştir
-            return distance * 0.1  # Basit bir yaklaşım
+        if distance < 0.1:  
+            return distance * 0.1 
         
         # Rota segmenti için önbellekte anahtar oluştur
         cache_key = (f"energy_{tuple(start_point)}_{tuple(end_point)}_{vehicle_mass}")
@@ -186,82 +177,100 @@ class OSRMHandler:
         if not elevation_profile:
             return distance * 0.15  # Yükseklik verisi yoksa basit bir yaklaşım kullan
         
-        # Yükseklik değişimi
-        start_elevation = elevation_profile['elevations'][0]
-        end_elevation = elevation_profile['elevations'][-1]
-        elevation_diff = end_elevation - start_elevation  # metre cinsinden
+        # Segmentlere bölünmüş yükseklik profilini kullan
+        elevations = elevation_profile['elevations']
         
-        # Eğim hesabı (yüzde olarak)
-        segment_distance = distance * 1000  # metre cinsinden
-        gradient_percent = (elevation_diff / segment_distance) * 100
-        
-        # Yük hesaplaması - 1000 kg = 100 desi kabul edelim
-        # vehicle_mass genellikle temel araç ağırlığı + yük olarak gelir
-        # Temel araç ağırlığını (örn. 10000 kg) çıkarıp sadece yük kısmını alalım
-        base_vehicle_mass = 10000  # temel araç ağırlığı (kg)
+        # Temel araç ağırlığı ve yük hesaplaması
+        base_vehicle_mass = 2000  # temel araç ağırlığı (kg)
         payload = max(0, vehicle_mass - base_vehicle_mass)  # kg cinsinden yük
         route_load = payload / 10  # desiye çevir (yaklaşık olarak)
         
-        # 1. Yük Faktörü - Hafif üssel artış
+        # Yük faktörü - Yük arttıkça enerji tüketimi artar
         load_factor = 1.0 + 0.4 * (route_load / 500) ** 1.15
         
-        # 2. Eğim Faktörü - Literatüre dayalı
-        if gradient_percent > 0:  # Yokuş yukarı
-            # Literatüre dayalı üstel artış modeli
-            base_gradient_effect = 0.15  # %1 eğim başına yaklaşık %15 artış
-            exp_factor = 1.2  # Üstel artışı kontrol eder
-            
-            # Yük etkisi - literatüre göre yük arttıkça eğimin etkisi de artar
-            yuk_etkisi = 1.0 + (route_load / 500) * 0.2
-            
-            # Üstel artış formülü
-            gradient_etkisi = (gradient_percent ** exp_factor) * base_gradient_effect * yuk_etkisi
-            
-            # Eğim faktörü, artışı temsil eder
-            gradient_factor = 1.0 + gradient_etkisi
-            
-            # Gerçekçi bir üst sınır koyalım
-            gradient_factor = min(gradient_factor, 5.0)
-            
-        else:  # Yokuş aşağı
-            # Literatüre dayalı optimum eğim değeri
-            optimum_egim = 4.0 if route_load <= 1000 else 3.5
-            max_kazanc_orani = 0.28 if route_load <= 1000 else 0.22
-            
-            abs_gradient = abs(gradient_percent)
-            
-            # Yükün kazancı azaltıcı etkisi - literatüre göre
-            yuk_tasarruf_azalma = (route_load / 500) * 0.03
-            yuk_etkisi = max(0.6, 1.0 - yuk_tasarruf_azalma)
-            
-            # Literatürden alınan eğriye göre kazanç
-            if abs_gradient <= optimum_egim:
-                # 0'dan optimum eğime kadar yaklaşık doğrusal artış
-                kazanc_orani = (abs_gradient / optimum_egim) * max_kazanc_orani
-            else:
-                # Optimum eğimden sonra azalan kazanç
-                max_egim = 12.0
-                min_kazanc = 0.04  # Minimum %4 kazanç
-                
-                if abs_gradient >= max_egim:
-                    kazanc_orani = min_kazanc
-                else:
-                    # Optimum ile max arasında karesel azalma
-                    progress = (abs_gradient - optimum_egim) / (max_egim - optimum_egim)
-                    kazanc_orani = max_kazanc_orani - ((max_kazanc_orani - min_kazanc) * (progress ** 1.5))
-            
-            # Yük etkisini uygula
-            kazanc_orani *= yuk_etkisi
-            
-            # Gradient factor hesapla (1'den küçük olmalı - maliyet azaltma)
-            gradient_factor = 1.0 - kazanc_orani
+        # Her segment için enerji maliyetini hesapla
+        total_energy_cost = 0
         
-        # Temel maliyet = mesafe * yük_faktörü * eğim_faktörü
-        base_cost = distance * load_factor * gradient_factor
+        # Toplam mesafeyi segmentlere böl
+        segment_distance = distance * 1000 / (len(elevations) - 1)  # metre cinsinden her segment için mesafe
+        
+        for i in range(len(elevations) - 1):
+            # Segment yükseklik farkı (metre)
+            elevation_diff = elevations[i+1] - elevations[i]
+            
+            # Segment eğimi (yüzde)
+            gradient_percent = (elevation_diff / segment_distance) * 100
+            
+            # Segment için enerji faktörü hesapla
+            segment_energy_factor = 0
+            
+            # Eğim faktörü
+            if gradient_percent > 0:  # Yokuş yukarı
+                
+                # Üstel artış modeli (eğim arttıkça enerji tüketimi üstel olarak artıyor)
+                base_gradient_effect = 0.09  # %1 eğim başına yaklaşık %9 artış 
+                exp_factor = 1.3  # Üstel artışı kontrol eder 
+                
+                # Yük her %10 arttığında, yokuş yukarı yakıt tüketimi yaklaşık %8-12 daha fazla artıyor
+                yuk_etkisi = 1.0 + (route_load / 500) * 0.3  # Yük etkisi faktörü
+                
+                # Üstel artış formülü
+                gradient_etkisi = (gradient_percent ** exp_factor) * base_gradient_effect * yuk_etkisi
+                
+                # Eğim faktörü, artışı temsil eder
+                gradient_factor = 1.0 + gradient_etkisi
+                
+                # Gerçekçi bir üst sınır
+                gradient_factor = min(gradient_factor, 5.0)  # Maksimum 5 kat artış
+                
+                segment_energy_factor = gradient_factor
+            else:  # Yokuş aşağı veya düz
+
+                optimum_egim = 3.0  
+                max_egim = 8.0  # Bu değerden sonra verimlilik azalır
+                
+
+                max_benefit = 0.5  # Maksimum %50 tasarruf 
+                min_benefit = 0.1  # Çok dik inişlerde minimum tasarruf
+                
+                abs_gradient = abs(gradient_percent)
+                
+                # Yükün kazancı azaltıcı etkisi 
+                yuk_tasarruf_azalma = (route_load / 500) * 0.1
+                max_benefit = max(0.2, max_benefit - yuk_tasarruf_azalma)  # Yük arttıkça maksimum tasarruf azalır
+                
+                if abs_gradient < 0.5:  # Neredeyse düz
+                    gradient_factor = 1.0
+                elif abs_gradient <= optimum_egim:
+                    # Optimum eğime kadar kazanç artar
+                    benefit_ratio = (abs_gradient / optimum_egim) * max_benefit
+                    gradient_factor = 1.0 - benefit_ratio
+                else:
+                    # Optimum eğimden sonra kazanç azalır
+                    if abs_gradient >= max_egim:
+                        # Çok dik inişlerde minimum kazanç
+                        gradient_factor = 1.0 - min_benefit
+                    else:
+                        # Optimum ile max arasında kademeli azalma
+                        progress = (abs_gradient - optimum_egim) / (max_egim - optimum_egim)
+                        benefit = max_benefit - ((max_benefit - min_benefit) * progress)
+                        gradient_factor = 1.0 - benefit
+                
+                segment_energy_factor = gradient_factor
+            
+            # Segment için toplam enerji faktörü (yük ve eğim etkisi)
+            total_factor = segment_energy_factor * load_factor
+            
+            # Segment için enerji maliyeti (km başına)
+            segment_energy_cost = (segment_distance / 1000) * total_factor
+            
+            # Toplam enerji maliyetine ekle
+            total_energy_cost += segment_energy_cost
         
         # Sonucu önbelleğe al
-        self.energy_cache[cache_key] = base_cost
-        return base_cost
+        self.energy_cache[cache_key] = total_energy_cost
+        
+        return total_energy_cost
 
     def calculate_route_segment_cost(self, origin, dest, vehicle_mass=10000):
         # Mesafe maliyeti
@@ -290,18 +299,6 @@ class OSRMHandler:
         return float('inf')
     
     def get_route_cost(self, origin, dest, vehicle_mass=10000):
-        """
-        İki nokta arasındaki toplam rota maliyetini hesaplar.
-        Bu maliyet, mesafe ve yükseklik profiline dayalı enerji tüketimini içerir.
-        
-        Args:
-            origin: Başlangıç noktası (lat, lon)
-            dest: Varış noktası (lat, lon)
-            vehicle_mass: Araç kütlesi (kg)
-            
-        Returns:
-            Toplam rota maliyeti (mesafe + enerji maliyeti)
-        """
         return self.calculate_route_segment_cost(origin, dest, vehicle_mass)
     
     def precompute_distances(self, instance):
@@ -373,16 +370,7 @@ class OSRMHandler:
         return False
 
     def get_route_details(self, origin, dest):
-        """
-        İki nokta arasındaki rota detaylarını, gerçek yol geometrisi dahil alır.
-        
-        Args:
-            origin: Başlangıç noktası (lat, lon)
-            dest: Varış noktası (lat, lon)
-            
-        Returns:
-            Rota detayları içeren sözlük veya None (hata durumunda)
-        """
+
         # Önbellekte bir anahtar oluştur
         cache_key = f"route_{tuple(origin)}_{tuple(dest)}"
         if hasattr(self, 'route_cache') and cache_key in self.route_cache:
